@@ -7,11 +7,11 @@ def f(x,y):
 
 def gradient_f(x,y):
     term1=np.exp(-y+2)/(2+np.cos(6*x))
-    term1_x=-term1*(6*np.sin(6*x))/(2+np.cos(6*x))
+    term1_x=term1*(6*np.sin(6*x))/((2+np.cos(6*x)))
     term1_y=-term1
 
     term2=0.5*np.log((4*x-2)**2+1)
-    term2_x=4*(4*x-2)/(4*(4*x-2)**2+4)
+    term2_x=4*(4*x-2)/(4*(4*x-2)**2+1)
     term2_y=0
 
     df_dx=term1_x+term2_x
@@ -42,26 +42,23 @@ def project_to_region(x,y,M):
         return x-M
 
 def projected_gradient_descent(x,t,y_0,M,K,epsilon,alpha):
-    y=y_0
-    for _ in range(K):
-        print("x:",x)
+    y=project_to_region(x,y_0,M)
+    for i in range(K):
         grad=gradient_g(x,y,t)
         grad_y=grad[1]
-        print(grad_y)
         y-=alpha*grad_y
-        print("y:",y)
         y=project_to_region(x,y,M)
-        print("y:",y)
         grad_norm=np.abs(grad[1])
         if grad_norm<epsilon:
-            return float(y), True
+            break
     grad=gradient_g(x,y,t)
     grad_norm=np.abs(grad[1])
+    print(f"i: {i}, grad norm: {grad_norm}")
     return float(y),grad_norm<epsilon
 
 def LL_solver(x,t,y_0,M,K,epsilon,alpha):
     while True:
-        y,converged=projected_gradient_descent(x,t,y_0,M,K,epsilon,alpha)
+        y,converged=projected_gradient_descent(x,t,y_0,M,K,epsilon,M*alpha)
         if converged:
             return float(y)
         else:
@@ -71,27 +68,29 @@ def LL_solver(x,t,y_0,M,K,epsilon,alpha):
 def barrier_method(x_0,y_0,t,I,M,K,epsilon,alpha_1,alpha_2):
     x=x_0
     y=y_0
-    for _ in range(I):
+    for p in range(I):
         y=LL_solver(x,t,y,M,K,epsilon,alpha_1)
         grad_f=gradient_f(x,y)
         grad_f_x=grad_f[0]
         grad_f_y=grad_f[1]
         hessian_y=hessian_y_g(x,y,t)
         mixed_hessian=mixed_hessian_g(x,y,t)
-        descent_direction=grad_f_x-mixed_hessian/hessian_y*grad_f_y
+        descent_direction=grad_f_x-mixed_hessian*grad_f_y/hessian_y
         x=x-alpha_2*descent_direction
         x=np.clip(x,0,3)
+        grad_norm=np.abs(descent_direction)
+        print(f"p: {p}, x: {x}, grad norm: {grad_norm}")
     return x,y
 
-x_0=2.0
+x_0=3.0
 y_0=1.0
-t=0.1
-I=100
+t=0.01
+I=500
 M=1
-K=1000
-epsilon=1e-2
-alpha_1=0.01
-alpha_2=0.05
+K=10
+epsilon=1e-3
+alpha_1=5
+alpha_2=0.01
 
 x_final,y_final=barrier_method(x_0,y_0,t,I,M,K,epsilon,alpha_1,alpha_2)
 print("Final x:",x_final)
