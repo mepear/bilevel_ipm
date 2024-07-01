@@ -79,13 +79,13 @@ def barrier_method(x_0,y_0,t,I,M,K,epsilon,alpha_1,alpha_2):
         x=x-alpha_2*descent_direction
         x=np.clip(x,0,3)
         grad_norm=np.abs(descent_direction)
-        print(f"p: {p}, x: {x}, grad norm: {grad_norm}")
+        print(f"p: {p}, x: {x}, grad norm of hyperfunction: {grad_norm}")
     return x,y
 
 x_0=3.0
 y_0=1.0
 t=0.01
-I=500
+I=300
 M=1
 K=10
 epsilon=1e-3
