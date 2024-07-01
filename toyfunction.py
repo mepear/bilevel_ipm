@@ -7,11 +7,11 @@ def f(x,y):
 
 def gradient_f(x,y):
     term1=np.exp(-y+2)/(2+np.cos(6*x))
-    term1_x=term1*(6*np.sin(6*x))/((2+np.cos(6*x)))
+    term1_x=term1*(6*np.sin(6*x))/(2+np.cos(6*x))
     term1_y=-term1
 
     term2=0.5*np.log((4*x-2)**2+1)
-    term2_x=4*(4*x-2)/(4*(4*x-2)**2+1)
+    term2_x=4*(4*x-2)/((4*x-2)**2+1)
     term2_y=0
 
     df_dx=term1_x+term2_x
@@ -40,36 +40,43 @@ def project_to_region(x,y,M):
         return y
     else:
         return x-M
-
-def projected_gradient_descent(x,t,y_0,M,K,epsilon,alpha):
+    
+def projected_gradient_descent(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,alpha_1):
     y=project_to_region(x,y_0,M)
-    for i in range(K):
+    i=0
+    delta=float('inf')
+    while delta>epsilon_3 and i<max_iters_inner:
         grad=gradient_g(x,y,t)
         grad_y=grad[1]
-        y-=alpha*grad_y
+        y_old=y
+        y-=alpha_1*grad_y
         y=project_to_region(x,y,M)
+        delta=y-y_old
         grad_norm=np.abs(grad[1])
-        if grad_norm<epsilon:
+        i+=1
+        if grad_norm<epsilon_1:
             break
     grad=gradient_g(x,y,t)
     grad_norm=np.abs(grad[1])
     print(f"i: {i}, grad norm: {grad_norm}")
-    return float(y),grad_norm<epsilon
+    return float(y),grad_norm<epsilon_1
 
-def LL_solver(x,t,y_0,M,K,epsilon,alpha):
+def LL_solver(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,alpha_1):
     while True:
-        y,converged=projected_gradient_descent(x,t,y_0,M,K,epsilon,M*alpha)
+        y,converged=projected_gradient_descent(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,M*alpha_1)
         if converged:
             return float(y)
         else:
             M/=2
             y_0=y
 
-def barrier_method(x_0,y_0,t,I,M,K,epsilon,alpha_1,alpha_2):
+def barrier_method(x_0,y_0,t,max_iters_outer,M,max_iters_inner,epsilon_1,epsilon_2,alpha_1,alpha_2):
     x=x_0
     y=y_0
-    for p in range(I):
-        y=LL_solver(x,t,y,M,K,epsilon,alpha_1)
+    p=0
+    grad_norm=float('inf')
+    while grad_norm>epsilon_2 and p<max_iters_outer:
+        y=LL_solver(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,alpha_1)
         grad_f=gradient_f(x,y)
         grad_f_x=grad_f[0]
         grad_f_y=grad_f[1]
@@ -80,19 +87,22 @@ def barrier_method(x_0,y_0,t,I,M,K,epsilon,alpha_1,alpha_2):
         x=np.clip(x,0,3)
         grad_norm=np.abs(descent_direction)
         print(f"p: {p}, x: {x}, grad norm of hyperfunction: {grad_norm}")
+        p+=1
     return x,y
 
-x_0=3.0
-y_0=-1.0
+x_0=2.7
+y_0=2.7
 t=0.001
-I=200
+max_iters_outer=1000
+max_iters_inner=100
 M=1
-K=10
-epsilon=1e-3
+epsilon_1=1e-2
+epsilon_2=1e-2
+epsilon_3=1e-7
 alpha_1=5
 alpha_2=0.01
 
-x_final,y_final=barrier_method(x_0,y_0,t,I,M,K,epsilon,alpha_1,alpha_2)
+x_final,y_final=barrier_method(x_0,y_0,t,max_iters_outer,M,max_iters_inner,epsilon_1,epsilon_2,alpha_1,alpha_2)
 print("Final x:",x_final)
 print("Final y:",y_final)
 print("Final function value",f(x_final,y_final))
