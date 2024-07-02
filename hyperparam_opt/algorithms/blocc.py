@@ -287,7 +287,7 @@ if __name__ == "__main__":
 
         x_train, y_train, x_val, y_val, x_test, y_test = train_val_test_split(data, seed, n_train, n_val)
 
-        metrics_seed, variables_seed = ours(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs)
+        metrics_seed, variables_seed = blocc(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs)
         metrics.append(metrics_seed)
         variables_seed.append(variables_seed)
 

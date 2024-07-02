@@ -13,7 +13,7 @@ sys.path.append('..')
 from utils import load_diabetes, train_val_test_split
 
 
-def blipm(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs, verbose=True):
+def barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs, verbose=True):
     feature=x_train.shape[1] # = 8
     ######### parameters
     C_tensor_val= torch.Tensor(x_train.shape[0]).uniform_(1.,5.)
@@ -287,7 +287,7 @@ if __name__ == "__main__":
 
         x_train, y_train, x_val, y_val, x_test, y_test = train_val_test_split(data, seed, n_train, n_val)
 
-        metrics_seed, variables_seed = ours(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs)
+        metrics_seed, variables_seed = barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs)
         metrics.append(metrics_seed)
         variables_seed.append(variables_seed)
 
@@ -314,11 +314,11 @@ if __name__ == "__main__":
         axis = np.mean(time_computation,axis=0)
 
         plt.rcParams.update({'font.size': 18})
-        plt.rcParams['font.sans-serif']=['Arial']#如果要显示中文字体，则在此处设为：SimHei
-        plt.rcParams['axes.unicode_minus']=False #显示负号
+        plt.rcParams['font.sans-serif']=['Arial']
+        plt.rcParams['axes.unicode_minus']=False
         axis=time_computation.mean(0)
         plt.figure(figsize=(8,6))
-        #plt.grid(linestyle = "--") #设置背景网格线为虚线
+        #plt.grid(linestyle = "--")
         ax = plt.gca()
         plt.plot(axis,val_loss_mean,'-',label="Training loss")
         ax.fill_between(axis,val_loss_mean-val_loss_sd,val_loss_mean+val_loss_sd,alpha=0.2)
@@ -334,7 +334,7 @@ if __name__ == "__main__":
         plt.legend(loc=0, numpoints=1)
         leg = plt.gca().get_legend()
         ltext = leg.get_texts()
-        #plt.setp(ltext, fontsize=18,fontweight='bold') #设置图例字体的大小和粗细
+        #plt.setp(ltext, fontsize=18,fontweight='bold')
         plt.savefig('ho_svm_kernel_1.pdf') 
         #plt.show()
 
@@ -353,6 +353,6 @@ if __name__ == "__main__":
         plt.legend(loc=0, numpoints=1)
         leg = plt.gca().get_legend()
         ltext = leg.get_texts()
-        #plt.setp(ltext, fontsize=18,fontweight='bold') #设置图例字体的大小和粗细
+        #plt.setp(ltext, fontsize=18,fontweight='bold')
         plt.savefig('ho_svm_kernel_2.pdf') 
         plt.show()
