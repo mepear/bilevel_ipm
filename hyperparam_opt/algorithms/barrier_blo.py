@@ -127,10 +127,11 @@ def barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs,
         C.value = c_array_value_np
 
         ###### Solve lower problem
+        # TODO: change to our gradient based solver, note that we need an initial point
         begin=time.time()
         try:
             # TODO: replace this with a gradient method
-            prob_lower.solve(solver='ECOS', abstol=2e-3,reltol=2e-3,max_iters=1000000000, warm_start=True)  
+            prob_lower.solve(solver='ECOS', abstol=2e-3,reltol=2e-3,max_iters=1000, warm_start=True)  
         except:
             print(C.value)
             print(prob_lower.status)
