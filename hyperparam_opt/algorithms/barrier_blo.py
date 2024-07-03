@@ -12,73 +12,91 @@ sys.path.append('..')
 
 from utils import load_diabetes, train_val_test_split
 
-class barrier_blo:
-    """
-    Write our method into a class
-    """
-    def __init__(self, problem, hparams, epochs=100, verbose=True):
-        self.problem = problem
-        self.hparams = hparams
+# class barrier_blo:
+#     """
+#     Write our method into a class
+#     """
+#     def __init__(self, problem, hparams, epochs=100, verbose=True):
+#         self.problem = problem
+#         self.hparams = hparams
         
-        self.t = hparams['t']
-        self.epochs = epochs
+#         self.t = hparams['t']
+#         self.epochs = epochs
         
-    def inner_loop(self):
-        pass
+#     def inner_loop(self):
+#         pass
     
-    def outer_loop(self):
-        pass
+#     def outer_loop(self):
+#         pass
     
-class svm_problem:
-    """
-    Define the problem into a class
-    """
-    def __init__(self, datasets):
-        self.x_train = datasets["x_train"]
+# class svm_problem:
+#     """
+#     Define the problem into a class
+#     """
+#     def __init__(self, datasets):
+#         self.x_train = datasets["x_train"]
+#         self.y_train = datasets["y_train"]
+#         self.x_val = datasets["x_val"]
+#         self.y_val = datasets["y_val"]
+#         self.x_test = datasets["x_test"]
+#         self.y_test = datasets["y_test"]
+#         self.feature = self.x_train.shape[1]
     
-    def f_val(self):
-        """Upper objective"""
-        pass
+#     def f_val(self, c, w, b, xi):
+#         """Upper objective"""
+#         x = torch.reshape(torch.Tensor(self.y_val), (torch.Tensor(self.y_val).shape[0],1)) 
+#         x = x * F.linear(torch.Tensor(self.x_val), w, b) # / torch.linalg.norm(w_tensor)
+#         loss_upper = torch.sum(torch.exp(1-x)) + torch.linalg.norm(c)  # TODO: isn't this norm square???
+#         return loss_upper
     
-    def g_val(self):
-        """lower objective"""
-        pass
+#     def g_val(self, w):
+#         """lower objective"""
+#         return 0.5*cp.norm(w, 2)**2
     
-    def upper_constraints(self):
-        pass
+#     def upper_constraints(self):
+#         return []
+    
+#     def proj_to_upper_constraints(self, c):
+#         return c
         
-    def lower_constraints(self):
-        pass
-    
-    def tilde_g_val(self):
-        return self.g_val() + sum([-self.t * math.log(-v) for v in self.lower_constraints])
-    
-    def upper_grad_x(self):
-        pass
-    
-    def lower_grad_x(self):
-        pass
-    
-    def upper_grad_y(self):
-        pass
-    
-    def lower_grad_y(self):
-        pass
-    
-    def lower_hessian(self):
-        pass
-    
-    def lower_jacobian(self):
-        """nabla_x nabla_y tilde_g"""
-        pass
-    
-    def approximate_inv_hessian(self, h=10):
-        """approximate inverse of hessian using Neumann series"""
-        pass
-    
+#     def lower_constraints(self, c, w, b, xi):
+#         constraints=[]
+#         for i in range(self.y_train.shape[0]):
+#             constraints.append(1 - xi[i] - y_train[i] * (cp.scalar_product(w, x_train[i])+b) <= 0)
         
+#         constraints.extend([xi <= c])
+#         return constraints
+    
+#     def proj_to_lower_constraints(self, m=0):
+#         pass
+    
+#     def tilde_g_val(self):
+#         return self.g_val() + sum([-self.t * math.log(-v) for v in self.lower_constraints])
+    
+#     def upper_grad_x(self, c):
+#         return c
+    
+#     def lower_grad_x(self):
+#         pass
+    
+#     def upper_grad_y(self):
+#         pass
+    
+#     def lower_grad_y(self):
+#         pass
+    
+#     def lower_hessian(self):
+#         pass
+    
+#     def lower_jacobian(self):
+#         """nabla_x nabla_y tilde_g"""
+#         pass
+    
+#     def approximate_inv_hessian(self, h=10):
+#         """approximate inverse of hessian using Neumann series"""
+#         pass
+    
 
-# TODO: remove CVXPY completely
 def barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs, verbose=True):
     feature=x_train.shape[1] # = 8
     ######### parameters
@@ -197,7 +215,7 @@ def barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs,
         begin=time.time()
         try:
             # TODO: replace this with a gradient method
-            prob_lower.solve(solver='ECOS', abstol=2e-3,reltol=2e-3,max_iters=1000, warm_start=True)  
+            prob_lower.solve(solver='ECOS', abstol=2e-3,reltol=2e-3,max_iters=10000, warm_start=True)  
         except:
             print(C.value)
             print(prob_lower.status)
@@ -229,6 +247,20 @@ def barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs,
 
         ############# update on upper level variable C 
         # TODO: modify this
+        def lower_level_jacobian(c, w, b, xi):
+            pass
+        
+        def lower_level_hessian(c, w, b, xi):
+            pass
+        
+        def approx_hessian_inv(c, w, b, xi):
+            """Approximate hessian using Neumann series"""
+            pass
+        
+        def upper_level_grad_y(c, w, b, xi):
+            pass
+        
+        
         C_tensor_val = C_tensor.detach()
         C_tensor_val -= eta*(C_tensor.grad.detach())
         # C_tensor_val -= eta*(gam*dual_variables_xi) - dual_variables_xi_F
