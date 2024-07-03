@@ -1,7 +1,7 @@
 import cvxpy as cp
 import numpy as np
 import time
-
+import math
 import matplotlib.pyplot as plt
 
 import torch
@@ -11,6 +11,72 @@ import sys
 sys.path.append('..')
 
 from utils import load_diabetes, train_val_test_split
+
+class barrier_blo:
+    """
+    Write our method into a class
+    """
+    def __init__(self, problem, hparams, epochs=100, verbose=True):
+        self.problem = problem
+        self.hparams = hparams
+        
+        self.t = hparams['t']
+        self.epochs = epochs
+        
+    def inner_loop(self):
+        pass
+    
+    def outer_loop(self):
+        pass
+    
+class svm_problem:
+    """
+    Define the problem into a class
+    """
+    def __init__(self, datasets):
+        self.x_train = datasets["x_train"]
+    
+    def f_val(self):
+        """Upper objective"""
+        pass
+    
+    def g_val(self):
+        """lower objective"""
+        pass
+    
+    def upper_constraints(self):
+        pass
+        
+    def lower_constraints(self):
+        pass
+    
+    def tilde_g_val(self):
+        return self.g_val() + sum([-self.t * math.log(-v) for v in self.lower_constraints])
+    
+    def upper_grad_x(self):
+        pass
+    
+    def lower_grad_x(self):
+        pass
+    
+    def upper_grad_y(self):
+        pass
+    
+    def lower_grad_y(self):
+        pass
+    
+    def lower_hessian(self):
+        pass
+    
+    def lower_jacobian(self):
+        """nabla_x nabla_y tilde_g"""
+        pass
+    
+    def approximate_inv_hessian(self, h=10):
+        """approximate inverse of hessian using Neumann series"""
+        pass
+    
+        
 
 # TODO: remove CVXPY completely
 def barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs, verbose=True):
