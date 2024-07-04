@@ -22,12 +22,55 @@ class barrier_blo:
         
         self.t = hparams['t']
         self.epochs = epochs
-        
-    def inner_loop(self):
-        pass
     
-    def outer_loop(self):
-        pass
+    def projected_gradient_descent(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,alpha_1):
+        y=project_to_region(x,y_0,M)
+        i=0
+        delta=float('inf')
+        while delta>epsilon_3 and i<max_iters_inner:
+            grad=gradient_g(x,y,t)
+            grad_y=grad[1]
+            y_old=y
+            y-=alpha_1*grad_y
+            y=project_to_region(x,y,M)
+            delta=y-y_old
+            grad_norm=np.abs(grad[1])
+            i+=1
+            if grad_norm<epsilon_1:
+                break
+        grad=gradient_g(x,y,t)
+        grad_norm=np.abs(grad[1])
+        print(f"i: {i}, grad norm: {grad_norm}")
+        return float(y),grad_norm<epsilon_1
+    
+    def lower_loop(self):
+        while True:
+            y,converged=projected_gradient_descent(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,M*alpha_1)
+            if converged:
+                return float(y)
+            else:
+                M/=2
+                y_0=y
+    
+    def upper_loop(self):
+        x=x_0
+        y=y_0
+        p=0
+        grad_norm=float('inf')
+        while grad_norm>epsilon_2 and p<max_iters_outer:
+            y=LL_solver(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,alpha_1)
+            grad_f=gradient_f(x,y)
+            grad_f_x=grad_f[0]
+            grad_f_y=grad_f[1]
+            hessian_y=hessian_y_g(x,y,t)
+            mixed_hessian=mixed_hessian_g(x,y,t)
+            descent_direction=grad_f_x-mixed_hessian*grad_f_y/hessian_y
+            x=x-alpha_2*descent_direction
+            x=np.clip(x,0,3)
+            grad_norm=np.abs(descent_direction)
+            print(f"p: {p}, x: {x}, grad norm of hyperfunction: {grad_norm}")
+            p+=1
+        return x,y,p
     
 class svm_problem:
     """
@@ -48,9 +91,10 @@ class svm_problem:
     def f_val(self, c, w, b, xi):
         """
         Upper objective
+        Right now this function is written in torch but we should d
         """
         try:
-            w_tensor = torch.Tensor(np.array([w.value])) #.requires_grad_()
+            w_tensor = torch.Tensor(w) #.requires_grad_()
         except:
             print(w_tensor)
             raise RuntimeError("HE DADO NONE")
@@ -176,6 +220,9 @@ class svm_problem:
     
     def approximate_inv_hessian(self, h=10):
         """approximate inverse of hessian using Neumann series"""
+        pass
+    
+    def record(self, c, w, b, xi):
         pass
     
 
