@@ -12,7 +12,7 @@ sys.path.append('..')
 
 from utils import load_diabetes, train_val_test_split
 
-class barrier_blo:
+class Barrier_BLO:
     """
     Write our method into a class
     """
@@ -22,57 +22,93 @@ class barrier_blo:
         
         self.t = hparams['t']
         self.epochs = epochs
+        self.verbose = verbose
     
-    def projected_gradient_descent(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,alpha_1):
-        y=project_to_region(x,y_0,M)
-        i=0
-        delta=float('inf')
-        while delta>epsilon_3 and i<max_iters_inner:
-            grad=gradient_g(x,y,t)
-            grad_y=grad[1]
-            y_old=y
-            y-=alpha_1*grad_y
-            y=project_to_region(x,y,M)
-            delta=y-y_old
-            grad_norm=np.abs(grad[1])
-            i+=1
-            if grad_norm<epsilon_1:
-                break
-        grad=gradient_g(x,y,t)
-        grad_norm=np.abs(grad[1])
-        print(f"i: {i}, grad norm: {grad_norm}")
-        return float(y),grad_norm<epsilon_1
+    # def projected_gradient_descent(self, x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_2,alpha):
+    def projected_gradient_descent(self, c0, w0, b0, xi0, M, max_iters_inner,epsilon,alpha):
+        c = c0
+        w, b, xi = self.problem.proj_to_lower_constraints(c0, w0, b0, xi0, m=M)
+        i, grad_norm = 0, float('inf')
+        while grad_norm > epsilon and i < max_iters_inner:
+            grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
+            w_old, b_old, xi_old = w, b, xi
+            w, b, xi = w_old - alpha * grad_w, b_old - alpha * grad_b, xi_old - alpha * grad_xi
+            w, b, xi = self.problem.proj_to_lower_constraints(c, w, b, xi, m=M)
+            # delta_w, delta_b, delta_xi = w - w_old, b - b_old, xi - xi_old
+            grad_norm = np.linalg.norm(grad_w) + np.linalg.norm(grad_b) + np.linalg.norm(grad_xi)
+            i += 1
+            
+        grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
+        grad_norm = np.linalg.norm(grad_w) + np.linalg.norm(grad_b) + np.linalg.norm(grad_xi)
+        print(f"    Inner loop PGD total iter: {i}, grad norm: {grad_norm}")
+        return w, b, xi, grad_norm < epsilon
     
-    def lower_loop(self):
-        while True:
-            y,converged=projected_gradient_descent(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,M*alpha_1)
-            if converged:
-                return float(y)
-            else:
-                M/=2
-                y_0=y
+    def lower_loop(self, c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha):
+        converged = False
+        while not converged:
+            w, b, xi, converged=self.projected_gradient_descent(c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha)
+            M /= 2
+            i += 1
+            w0, b0, xi0 = w, b, xi
+        return w, b, xi, M
     
-    def upper_loop(self):
-        x=x_0
-        y=y_0
-        p=0
-        grad_norm=float('inf')
-        while grad_norm>epsilon_2 and p<max_iters_outer:
-            y=LL_solver(x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_3,alpha_1)
-            grad_f=gradient_f(x,y)
-            grad_f_x=grad_f[0]
-            grad_f_y=grad_f[1]
-            hessian_y=hessian_y_g(x,y,t)
-            mixed_hessian=mixed_hessian_g(x,y,t)
-            descent_direction=grad_f_x-mixed_hessian*grad_f_y/hessian_y
-            x=x-alpha_2*descent_direction
-            x=np.clip(x,0,3)
-            grad_norm=np.abs(descent_direction)
-            print(f"p: {p}, x: {x}, grad norm of hyperfunction: {grad_norm}")
-            p+=1
-        return x,y,p
+    def upper_loop(self, c0, w0, b0, xi0, hparams):
+        """
+        alpha, beta: corresponds to lower and upper lr
+        """
+        M, max_iters_outer, max_iters_inner, epsilon, alpha, beta =\
+            hparams['M'], hparams['max_iters_outer'], hparams['max_iters_inner'], hparams['epsilon'], hparams['alpha'], hparams['beta']
+        
+        val_loss_list=[]
+        test_loss_list=[]
+        val_acc_list=[]
+        test_acc_list=[]
+        time_computation=[]
+        algorithm_start_time=time.time()
+
+        metrics = []
+        # variables = []
+        
+        c = c0
+        w, b, xi = w0, b0, xi0
+        epoch = 0
+        grad_norm = float('inf')
+        while grad_norm > epsilon and epoch < max_iters_outer:
+            # variables.append({'c': c, 'xi': xi, 'w': w, 'b': b}) # uncomment this if you want to see all variables
+            
+            w, b, xi, M = self.lower_loop(c, w, b, xi, M, max_iters_inner, epsilon, alpha)
+            grad_c = self.problem.upper_grad_x(c)
+            grad_w, grad_b, grad_xi = self.problem.upper_grad_y(c, w, b, xi)
+            hessian_y = self.problem.lower_hessian(c, w, b, xi)
+            jacobian = self.problem.lower_jacobian(c, w, b, xi)
+            descent_direction=grad_c - jacobian.dot(np.linalg.solve(hessian_y, np.stack([grad_w, grad_b, grad_xi])))
+            c = c - beta * descent_direction
+            grad_norm=np.linalg.norm(descent_direction)
+            print(f"Upper iter: {epoch}, grad norm of hyperfunction: {grad_norm}")
+            
+            # update metrics
+            curr_metric = self.problem.compute_metrics(c, w, b, xi)
+            metrics.append(curr_metric)
+            
+            if epoch%10==0 and self.verbose:
+                print(f"Epoch [{epoch}/{max_iters_outer}]:",
+                "val acc: {:.2f}".format(curr_metric['val_acc']),
+                "val loss: {:.2f}".format(curr_metric['val_loss']),
+                "test acc: {:.2f}".format(curr_metric['test_acc']),
+                "test loss: {:.2f}".format(curr_metric['test_loss']))
+                # print(f"Epoch [{j}/{epoch}]:","upper_loss: ", loss_upper.detach().numpy()/15.0, "test_loss_upper: ", test_loss_upper.detach().numpy()/11.8)
+
+            val_loss_list.append(curr_metric['val_loss']) # length 150
+            test_loss_list.append(curr_metric['test_acc']) # length 118
+            val_acc_list.append(curr_metric['val_acc'])
+            test_acc_list.append(curr_metric['test_acc'])
+            time_computation.append(time.time() - algorithm_start_time)
+            epoch += 1
+            
+        print(f"Outer loop total iter: {epoch}, final grad norm: {grad_norm}")
+        return metrics, c, w, b, xi, grad_norm
     
-class svm_problem:
+class SVM_Problem:
     """
     Define the problem into a class
     in this class, variables c, w, b and xi are numpy arrays
@@ -120,7 +156,7 @@ class svm_problem:
     def lower_constraints(self, c, w, b, xi, m=0.0):
         constraints=[]
         for i in range(self.y_train.shape[0]):
-            constraints.append(1 - xi[i] - y_train[i] * (cp.scalar_product(w, x_train[i])+b) <= -m)
+            constraints.append(1 - xi[i] - self.y_train[i] * (cp.scalar_product(w, self.x_train[i]).value + b) <= -m)
         
         constraints.extend([xi <= c - m])
         return constraints
@@ -134,24 +170,23 @@ class svm_problem:
         # lower variables
         w = cp.Variable(d)
         b = cp.Variable()
-        xi = cp.Variable(y_train.shape[0], nonneg=True)
+        xi = cp.Variable(self.y_train.shape[0], nonneg=True)
  
         # setup the objective and constraints and solve the problem
         obj = cp.Minimize(cp.sum_squares(w - w0) + cp.sum_squares(b - b0) + cp.sum_squares(xi - xi0))
         constr = self.lower_constraints(c0, w, b, xi, m=m)
         prob = cp.Problem(obj, constr)
         try:
-            prob.solve()
+            prob.solve(solver='ECOS')
         except:
             print(prob.status)
-            # prob.solve(solver='SCS')
-            raise RuntimeError("The projection problem is not solvable")
+            prob.solve(solver='SCS')
+            raise RuntimeError("The projection problem is not solvable by ECOS, trying SCS, if it fails then you need another way")
     
         return w, b, xi
 
-    
-    def tilde_g_val(self):
-        return self.g_val() + sum([-self.t * math.log(-v) for v in self.lower_constraints])
+    def tilde_g_val(self, c, w, b, xi, m=0.0):
+        return self.g_val(w) + sum([-self.t * math.log(-v) for v in self.lower_constraints(c, w, b, xi, m=m)])
     
     def upper_grad_x(self, c):
         return c
@@ -222,180 +257,47 @@ class svm_problem:
         """approximate inverse of hessian using Neumann series"""
         pass
     
-    def record(self, c, w, b, xi):
-        pass
-    
+    def compute_metrics(self, c, w, b, xi):
+        c_tensor = torch.Tensor(c)
+        w_tensor = torch.Tensor(w)
+        b_tensor = torch.Tensor(b)
+        xi_tensor = torch.Tensor(xi)
+        
+        x = torch.reshape(torch.Tensor(self.y_val), (torch.Tensor(self.y_val).shape[0],1)) 
+        x = x* F.linear(torch.Tensor(self.x_val), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
 
-def barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs, verbose=True):
-    feature=x_train.shape[1] # = 8
-    ######### parameters
-    C_tensor_val= torch.Tensor(x_train.shape[0]).uniform_(1.,5.)
-
-    ###### hyperparameters
-    eta = hparams['eta']
-    gam = hparams['gam']
-    t = hparams['t']  # the barrier parameter
-
-    # upper variable
-    C = cp.Parameter(y_train.shape[0], nonneg=True)
-    
-    # lower variables
-    w = cp.Variable(feature)
-    b = cp.Variable()
-    xi = cp.Variable(y_train.shape[0], nonneg=True)
-
-    ######### 2 level objectives
-    loss_lower =  0.5*cp.norm(w, 2)**2# + 0.5 * (cp.scalar_product(C, cp.power(xi,2))) # cp.exp(C)
-    loss_upper =  cp.sum(
-        # cp.maximum(
-        #     0, 1- cp.multiply(y_val, x_val@w_F + b_F)
-        # )**2
-        cp.exp( 1 - cp.multiply(y_val, x_val@w + b) )
-    )
-
-    # Create two constraints.
-    constraints=[]
-    constraints_value=[]
-    for i in range(y_train.shape[0]):
-        constraints.append(1 - xi[i] - y_train[i] * (cp.scalar_product(w, x_train[i])+b) <= 0)
-        constraints_value.append(1 - xi[i] - y_train[i] * (cp.scalar_product(w, x_train[i])+b) )
-    
-    constraints_xi = [xi <= C]
-
-    loss_lower_barrier = 0.5*cp.norm(w, 2)**2
-    for i in range(y_train.shape[0]):
-        loss_lower_barrier -= t * cp.log(-(1 - xi[i] - y_train[i] * (cp.scalar_product(w, x_train[i])+b)))
-    loss_lower_barrier -= t * cp.sum(cp.log(C - xi))
-
-    # Form objective.
-    # obj_lower = cp.Minimize(loss_lower)
-    obj_lower = cp.Minimize(loss_lower_barrier)
-    
-    # Form and solve problem.
-    # prob_lower = cp.Problem(obj_lower, constraints + constraints_xi)
-    prob_lower = cp.Problem(obj_lower)
-    
-    w_tensor = torch.ones(1,feature)
-    b_tensor = torch.tensor(0.)
-    xi_tensor = torch.tensor(y_train.shape[0])
-    
-    # For storage
-    val_loss_list=[]
-    test_loss_list=[]
-    val_acc_list=[]
-    test_acc_list=[]
-    time_computation=[]
-    algorithm_start_time=time.time()
-
-    metrics = []
-    variables = []
-
-    for epoch in range(epochs):
-
-        variables.append({
-            'C': C_tensor_val,
-            'xi': xi_tensor,
-            'w': w_tensor,
-            'b': b_tensor
-        })
-
-        x = torch.reshape(torch.Tensor(y_val), (torch.Tensor(y_val).shape[0],1)) 
-        x = x* F.linear(torch.Tensor(x_val), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
-
-        x1 = torch.reshape(torch.Tensor(y_test), (torch.Tensor(y_test).shape[0],1)) 
-        x1 = x1 * F.linear(torch.Tensor(x_test), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
+        x1 = torch.reshape(torch.Tensor(self.y_test), (torch.Tensor(self.y_test).shape[0],1)) 
+        x1 = x1 * F.linear(torch.Tensor(self.x_test), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
         # test_loss_upper= torch.sum(torch.sigmoid(x1))
-        test_loss_upper= torch.sum(torch.exp(1-x1))
+        test_loss_upper = torch.sum(torch.exp(1 - x1))
 
         # val_loss_F = (torch.sum(torch.exp(1-x))).detach().numpy()/y_val.shape[0]
         # test_loss_F = test_loss_upper.detach().numpy()/y_test.shape[0]
 
-        val_loss = (torch.sum(torch.exp(1-x))).detach().numpy()/y_val.shape[0]
-        test_loss = test_loss_upper.detach().numpy()/y_test.shape[0]
+        val_loss = (torch.sum(torch.exp(1 - x))).detach().numpy() / self.y_val.shape[0]
+        test_loss = test_loss_upper.detach().numpy() / self.y_test.shape[0]
 
         ###### Accuracy
-        q = torch.tensor(y_train) * (w_tensor @ x_train.T + b_tensor)
-        train_acc = (q>0).sum() / len(y_train)
+        q = torch.tensor(self.y_train) * (w_tensor @ self.x_train.T + b_tensor)
+        train_acc = (q>0).sum() / len(self.y_train)
 
-        q = torch.tensor(y_val) * (w_tensor @ x_val.T + b_tensor)
-        val_acc = (q>0).sum() / len(y_val)
+        q = torch.tensor(self.y_val) * (w_tensor @ self.x_val.T + b_tensor)
+        val_acc = (q>0).sum() / len(self.y_val)
 
-        q = torch.tensor(y_test) * (w_tensor @ x_test.T + b_tensor)
-        test_acc = (q>0).sum() / len(y_test)
-
-        metrics.append({
+        q = torch.tensor(self.y_test) * (w_tensor @ self.x_test.T + b_tensor)
+        test_acc = (q>0).sum() / len(self.y_test)
+        
+        return {
             #'train_loss': train_loss,
             'train_acc': train_acc,
             'val_loss': val_loss,
             'val_acc': val_acc,
             'test_loss': test_loss,
             'test_acc': test_acc,
-            'loss_upper': loss_upper,
-            'loss_lower': prob_lower.value,
-            'time_computation': time.time()-algorithm_start_time
-        })
-
-        c_array_value_np = C_tensor_val.detach().numpy() # /c_array_tensor.detach().numpy().sum()
-        # print(c_array_value_np.sum(),sum(c_array))
-        C.value = c_array_value_np
-
-        ###### Solve lower problem
-        # TODO: change to our gradient based solver, note that we need an initial point
-        begin=time.time()
-        try:
-            # TODO: replace this with a gradient method
-            prob_lower.solve(solver='ECOS', abstol=2e-3,reltol=2e-3,max_iters=10000, warm_start=True)  
-        except:
-            print(C.value)
-            print(prob_lower.status)
-            prob_lower.solve(solver='SCS')
-            raise RuntimeError("Lo he resuelto")
-        end=time.time()
-        # print("time: ",end-begin)
-
-        # dual_variables = np.array([ constraints[i].dual_value for i in range(len(constraints))])
-        # constraints_value_1= np.array([ constraints_value[i].value for i in range(len(constraints))])
-        # dual_variables_xi = constraints_xi[0].dual_value
-
-        ############# Calculate gradient
-        try:
-            w_tensor=torch.Tensor(np.array([w.value])) #.requires_grad_()
-        except:
-            print(prob_lower.status)
-            print(w_tensor)
-            raise RuntimeError("HE DADO NONE")
-        b_tensor=torch.Tensor(np.array([b.value])) #.requires_grad_()
-        xi_tensor =torch.Tensor(np.array([xi.value]))
-        C_tensor=torch.Tensor(np.array([C.value])).requires_grad_()
-
-        x = torch.reshape(torch.Tensor(y_val), (torch.Tensor(y_val).shape[0],1)) 
-        x = x* F.linear(torch.Tensor(x_val), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
-        loss_upper= torch.sum(torch.exp(1-x)) + torch.linalg.norm(C_tensor)  # TODO: isn't this norm square???
-
-        loss_upper.backward()
-
-        ############# update on upper level variable C
-        C_tensor_val = C_tensor.detach()
-        C_tensor_val -= eta*(C_tensor.grad.detach())
-        # C_tensor_val -= eta*(gam*dual_variables_xi) - dual_variables_xi_F
-        C_tensor_val = torch.maximum(C_tensor_val, torch.tensor(1e-4))[0,:]
-        
-        #################
-        if epoch%20==0 and verbose:
-            print(f"Epoch [{epoch}/{epochs}]:",
-              "val acc: {:.2f}".format(val_acc),
-              "val loss: {:.2f}".format(val_loss),
-              "test acc: {:.2f}".format(test_acc),
-              "test loss: {:.2f}".format(test_loss))
-            # print(f"Epoch [{j}/{epoch}]:","upper_loss: ", loss_upper.detach().numpy()/15.0, "test_loss_upper: ", test_loss_upper.detach().numpy()/11.8)
-
-        val_loss_list.append(val_loss) # length 150
-        test_loss_list.append(test_loss) # length 118
-        val_acc_list.append(val_acc)
-        test_acc_list.append(test_acc)
-        time_computation.append(time.time()-algorithm_start_time)
-
-    return metrics, variables
+            # 'loss_upper': loss_upper,
+            # 'loss_lower': loss_lower,
+            # 'time_computation': time.time() - algorithm_start_time
+        }
 
 
 if __name__ == "__main__":
@@ -439,19 +341,34 @@ if __name__ == "__main__":
 
     hparams = {
         'gam': 5,
-        'eta': 0.1
+        'eta': 0.1,
+        'alpha': 0.01,
+        'beta': 0.01,
+        'epsilon': 1e-5,
+        'max_iters_outer': 100,
+        'max_iters_inner': 100,
+        'M': 1
     }
 
     epochs = 80
     plot_results = True
 
+    c0, w0, b0, xi0 = np.random.randn(n_train), np.random.randn(45), np.random.randn(), np.random.randn(n_train)
     for seed in range(10):
 
         x_train, y_train, x_val, y_val, x_test, y_test = train_val_test_split(data, seed, n_train, n_val)
-
-        metrics_seed, variables_seed = barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs)
+        datasets = {
+            'x_train': x_train, 'y_train': y_train, 'x_val': x_val, 
+            'y_val': y_val, 'x_test': x_test, 'y_test': y_test
+        }
+        
+        problem = SVM_Problem(datasets)
+        barrier_blo = Barrier_BLO(problem, hparams)
+        
+        # metrics_seed, variables_seed = barrier_blo(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs)
+        metrics_seed, c, w, b, xi, grad_norm = barrier_blo.upper_loop(c0, w0, b0, xi0, hparams)
         metrics.append(metrics_seed)
-        variables_seed.append(variables_seed)
+        # variables.append([c, w, b, xi])
 
     train_acc = np.array([[x['train_acc'] for x in metrics] for metrics in metrics])
     val_acc = np.array([[x['val_acc'] for x in metrics] for metrics in metrics])
