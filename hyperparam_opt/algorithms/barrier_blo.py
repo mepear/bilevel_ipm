@@ -14,7 +14,7 @@ from utils import load_diabetes, train_val_test_split
 
 class Barrier_BLO:
     """
-    Write our method into a class
+    Write our barrier BLO method into a class
     """
     def __init__(self, problem, hparams, epochs=100, verbose=True):
         self.problem = problem
@@ -113,7 +113,7 @@ class Barrier_BLO:
     
 class SVM_Problem:
     """
-    Define the problem into a class
+    Define the SVM problem into a class
     in this class, variables c, w, b and xi are numpy arrays
     """
     def __init__(self, datasets, t=1e-3):
