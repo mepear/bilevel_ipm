@@ -28,10 +28,14 @@ class Barrier_BLO:
     def projected_gradient_descent(self, c0, w0, b0, xi0, M, max_iters_inner,epsilon,alpha):
         c = c0
         w, b, xi = self.problem.proj_to_lower_constraints(c0, w0, b0, xi0, m=M)
+        print(f"c: {c}, w: {w}, b: {b}, xi: {xi}")
+        print(f"constraints: {self.problem.lower_constraints(c, w, b, xi, m=0.0)}")
         i, grad_norm = 0, float('inf')
         while grad_norm > epsilon and i < max_iters_inner:
             grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
             w_old, b_old, xi_old = w, b, xi
+            print(grad_w, grad_b, grad_xi)
+            print(grad_w.shape, grad_b.shape, grad_xi.shape)
             w, b, xi = w_old - alpha * grad_w, b_old - alpha * grad_b, xi_old - alpha * grad_xi
             w, b, xi = self.problem.proj_to_lower_constraints(c, w, b, xi, m=M)
             # delta_w, delta_b, delta_xi = w - w_old, b - b_old, xi - xi_old
@@ -48,7 +52,6 @@ class Barrier_BLO:
         while not converged:
             w, b, xi, converged=self.projected_gradient_descent(c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha)
             M /= 2
-            i += 1
             w0, b0, xi0 = w, b, xi
         return w, b, xi, M
     
@@ -58,7 +61,7 @@ class Barrier_BLO:
         """
         M, max_iters_outer, max_iters_inner, epsilon, alpha, beta =\
             hparams['M'], hparams['max_iters_outer'], hparams['max_iters_inner'], hparams['epsilon'], hparams['alpha'], hparams['beta']
-        
+
         val_loss_list=[]
         test_loss_list=[]
         val_acc_list=[]
@@ -183,7 +186,7 @@ class SVM_Problem:
             prob.solve(solver='SCS')
             raise RuntimeError("The projection problem is not solvable by ECOS, trying SCS, if it fails then you need another way")
     
-        return w, b, xi
+        return np.array(w.value), np.array(b.value), np.array(xi.value)
 
     def tilde_g_val(self, c, w, b, xi, m=0.0):
         return self.g_val(w) + sum([-self.t * math.log(-v) for v in self.lower_constraints(c, w, b, xi, m=m)])
@@ -200,7 +203,7 @@ class SVM_Problem:
         grad_xi = np.zeros(self.y_train.shape[0])
         
         for i in range(self.y_val.shape[0]):
-            temp = np.exp(1 - self.y_val[i] * (cp.scalar_product(self.x_val[i],w).value + b))
+            temp = np.exp(1 - self.y_val[i] * (self.x_train[i].dot(w) + b))
             grad_w += temp * self.y_val[i] * self.x_val[i]
             grad_b += temp * self.y_val[i]
         
@@ -208,14 +211,19 @@ class SVM_Problem:
     
     def lower_grad_y(self, c, w, b, xi):
         grad_w = np.array(w)
-        grad_b = 0.0
+        grad_b = np.array(0.0)
+        # print(c.shape, w.shape, b.shape, xi.shape, self.x_train[0].shape, self.y_train[0].shape)
+        # print(f"w: {w}, b: {b}, c: {c}")
+        # print(f"self.y_train: {self.y_train}")
         
         for i in range(self.y_train.shape[0]):
-            temp = 1 / (self.y_train[i] * (cp.scalar_product(self.x_train[i],w).value + b) + xi - 1)
+            temp = 1 / (self.y_train[i] * (self.x_train[i].dot(w) + b + xi[i] - 1))
+            # print(f"self.x_train[i].dot(w) + b + xi[i] - 1: {self.x_train[i].dot(w) + b + xi[i] - 1}")
+            # print(f"temp: {temp}")
             grad_w -= self.t * temp * self.y_train[i] * self.x_train[i]
             grad_b -= self.t * temp * self.y_train[i]
         
-        grad_xi = [-self.t * temp - self.t * 1 / (c[i] - xi[i]) for i in range(self.y_train.shape[0])]
+        grad_xi = np.array([-self.t * temp - self.t * 1 / (c[i] - xi[i]) for i in range(self.y_train.shape[0])])
         
         return grad_w, grad_b, grad_xi
     
@@ -229,11 +237,11 @@ class SVM_Problem:
         h33 = np.zeros(shape=(self.y_train.shape[0], self.y_train.shape[0])) # nabla_xi^2
         
         for i in range(self.y_train.shape[0]):
-            temp = 1 / (self.y_train[i] * (cp.scalar_product(self.x_train[i],w).value + b) + xi - 1)^2
-            h11 += self.t * temp * self.y_train[i]^2 * self.x_train[i].reshape((self.feature, 1)).dot(self.x_train[i].reshape((1, self.feature)))
-            h12 += self.t * temp * self.y_train[i]^2 * self.x_train[i].reshape((self.feature, 1))
+            temp = 1 / (self.y_train[i] * (self.x_train[i].dot(w) + b) + xi[i] - 1)**2
+            h11 += self.t * temp * self.y_train[i]**2 * self.x_train[i].reshape((self.feature, 1)).dot(self.x_train[i].reshape((1, self.feature)))
+            h12 += self.t * temp * self.y_train[i]**2 * self.x_train[i].reshape((self.feature, 1))
             h13[:, i] = self.t * temp * self.y_train[i] * self.x_train[i].reshape((self.feature, 1))
-            h22 += self.t * temp * self.y_train[i]^2
+            h22 += self.t * temp * self.y_train[i]**2
             h23[i] = self.t * temp * self.y_train[i]
             h33[i, i] = self.t * temp + self.t / (c[i] - xi[i])**2
         
@@ -347,7 +355,8 @@ if __name__ == "__main__":
         'epsilon': 1e-5,
         'max_iters_outer': 100,
         'max_iters_inner': 100,
-        'M': 1
+        'M': 0.05,
+        't': 1e-3
     }
 
     epochs = 80
