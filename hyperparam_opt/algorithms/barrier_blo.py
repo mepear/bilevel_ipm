@@ -47,9 +47,9 @@ class Barrier_BLO:
         print(f"    Inner loop PGD total iter: {i}, grad norm: {grad_norm}")
         return w, b, xi, grad_norm < epsilon
     
-    def lower_loop(self, c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha):
+    def lower_loop(self, c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha, lower_bound_M=1e-6):
         converged = False
-        while not converged:
+        while not converged and M >= lower_bound_M:
             w, b, xi, converged=self.projected_gradient_descent(c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha)
             M /= 2
             w0, b0, xi0 = w, b, xi
@@ -248,13 +248,15 @@ class SVM_Problem:
         
         for i in range(self.y_train.shape[0]):
             temp = 1 / (self.y_train[i] * (self.x_train[i].dot(w) + b) + xi[i] - 1)**2
+            # print(f"temp: {temp}, self.y_train[i]: {self.y_train[i]}, self.x_train[i] shape: {self.x_train[i].shape}")
             h11 += self.t * temp * self.y_train[i]**2 * self.x_train[i].reshape((self.feature, 1)).dot(self.x_train[i].reshape((1, self.feature)))
             h12 += self.t * temp * self.y_train[i]**2 * self.x_train[i].reshape((self.feature, 1))
-            h13[:, i] = self.t * temp * self.y_train[i] * self.x_train[i].reshape((self.feature, 1))
+            h13[:, i] = self.t * temp * self.y_train[i] * self.x_train[i] # .reshape((self.feature, 1))
             h22 += self.t * temp * self.y_train[i]**2
             h23[i] = self.t * temp * self.y_train[i]
             h33[i, i] = self.t * temp + self.t / (c[i] - xi[i])**2
         
+        print(f"shapes: h11: {h11.shape}, h12: {h12.shape}, h13: {h13.shape}, h22: {h22.shape}, h23: {h23.shape}, h33: {h33.shape}")
         return np.stack(
             [
                 [h11, h12, h13],
@@ -359,7 +361,7 @@ if __name__ == "__main__":
 
     hparams = {
         'gam': 5,
-        'eta': 0.1,
+        # 'eta': 0.1,
         'alpha': 0.01,
         'beta': 0.01,
         'epsilon': 1e-5,
