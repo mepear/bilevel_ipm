@@ -132,18 +132,23 @@ class SVM_Problem:
         Upper objective
         Right now this function is written in torch but we should d
         """
-        try:
-            w_tensor = torch.Tensor(w) #.requires_grad_()
-        except:
-            print(w_tensor)
-            raise RuntimeError("HE DADO NONE")
-        b_tensor = torch.Tensor(np.array([b.value])) #.requires_grad_()
-        xi_tensor = torch.Tensor(np.array([xi.value]))
-        c_tensor = torch.Tensor(np.array([c.value])).requires_grad_()
+        # try:
+        #     w_tensor = torch.Tensor(w) #.requires_grad_()
+        # except:
+        #     print(w_tensor)
+        #     raise RuntimeError("HE DADO NONE")
+        # b_tensor = torch.Tensor(np.array([b.value])) #.requires_grad_()
+        # xi_tensor = torch.Tensor(np.array([xi.value]))
+        # c_tensor = torch.Tensor(np.array([c.value])).requires_grad_()
         
-        x = torch.reshape(torch.Tensor(self.y_val), (torch.Tensor(self.y_val).shape[0],1)) 
-        x = x * F.linear(torch.Tensor(self.x_val), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
-        loss_upper = torch.sum(torch.exp(1-x)) + torch.linalg.norm(c_tensor)  # TODO: isn't this norm square???
+        # x = torch.reshape(torch.Tensor(self.y_val), (torch.Tensor(self.y_val).shape[0],1)) 
+        # x = x * F.linear(torch.Tensor(self.x_val), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
+        # loss_upper = torch.sum(torch.exp(1-x)) + torch.linalg.norm(c_tensor)  # TODO: isn't this norm square???
+        
+        x = self.y_val.reshape((self.y_val.shape[0], 1))
+        x = x.dot(self.x_val.dot(w) + b)
+        loss_upper = np.sum(np.exp(1 - x)) + 0.5 * np.linalg.norm(c)**2
+        
         return loss_upper 
     
     def g_val(self, w):
