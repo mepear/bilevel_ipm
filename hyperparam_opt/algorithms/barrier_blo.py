@@ -28,14 +28,14 @@ class Barrier_BLO:
     def projected_gradient_descent(self, c0, w0, b0, xi0, M, max_iters_inner,epsilon,alpha):
         c = c0
         w, b, xi = self.problem.proj_to_lower_constraints(c0, w0, b0, xi0, m=M)
-        print(f"c: {c}, w: {w}, b: {b}, xi: {xi}")
-        print(f"constraints: {self.problem.lower_constraints(c, w, b, xi, m=0.0)}")
+        # print(f"c: {c}, w: {w}, b: {b}, xi: {xi}")
+        # print(f"constraints: {self.problem.lower_constraints(c, w, b, xi, m=0.0)}")
         i, grad_norm = 0, float('inf')
         while grad_norm > epsilon and i < max_iters_inner:
             grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
             w_old, b_old, xi_old = w, b, xi
-            print(grad_w, grad_b, grad_xi)
-            print(grad_w.shape, grad_b.shape, grad_xi.shape)
+            # print(grad_w, grad_b, grad_xi)
+            # print(grad_w.shape, grad_b.shape, grad_xi.shape)
             w, b, xi = w_old - alpha * grad_w, b_old - alpha * grad_b, xi_old - alpha * grad_xi
             w, b, xi = self.problem.proj_to_lower_constraints(c, w, b, xi, m=M)
             # delta_w, delta_b, delta_xi = w - w_old, b - b_old, xi - xi_old
@@ -164,9 +164,11 @@ class SVM_Problem:
     def lower_constraints(self, c, w, b, xi, m=0.0):
         constraints=[]
         for i in range(self.y_train.shape[0]):
-            constraints.append(1 - xi[i] - self.y_train[i] * (cp.scalar_product(w, self.x_train[i]).value + b) <= -m)
+            # print(f"xi[i]: {xi[i]}, self.y_train[i]: {self.y_train[i]}, self.x_train[i]: {self.x_train[i]}, b: {b}")
+            constraints.append(1 - xi[i] - self.y_train[i] * (self.x_train[i] @ w + b) <= -m)
         
-        constraints.extend([xi <= c - m])
+        constraints.extend([xi - c <= - m])
+        # print(f"[xi <= c - m]: {[xi - c <= - m]}")
         return constraints
     
     def proj_to_lower_constraints(self, c0, w0, b0, xi0, m=0.0):
@@ -183,13 +185,16 @@ class SVM_Problem:
         # setup the objective and constraints and solve the problem
         obj = cp.Minimize(cp.sum_squares(w - w0) + cp.sum_squares(b - b0) + cp.sum_squares(xi - xi0))
         constr = self.lower_constraints(c0, w, b, xi, m=m)
+        
+        # ccc = self.lower_constraints(c0, w0, b0, xi0, m=m)
+        # print(f"constraint before solving: {ccc}")
         prob = cp.Problem(obj, constr)
         try:
-            prob.solve(solver='ECOS')
+            prob.solve()
+            # print(f"constraint after solving: {[v.value for v in prob.constraints]}")
         except:
             print(prob.status)
-            prob.solve(solver='SCS')
-            raise RuntimeError("The projection problem is not solvable by ECOS, trying SCS, if it fails then you need another way")
+            raise RuntimeError("The projection problem is not solvable")
     
         return np.array(w.value), np.array(b.value), np.array(xi.value)
 
