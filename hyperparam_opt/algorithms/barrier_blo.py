@@ -84,7 +84,8 @@ class Barrier_BLO:
             grad_w, grad_b, grad_xi = self.problem.upper_grad_y(c, w, b, xi)
             hessian_y = self.problem.lower_hessian(c, w, b, xi)
             jacobian = self.problem.lower_jacobian(c, w, b, xi)
-            descent_direction=grad_c - jacobian.dot(np.linalg.solve(hessian_y, np.stack([grad_w, grad_b, grad_xi])))
+            print(f"hessian_y shape: {hessian_y.shape}, jacobian shape: {jacobian.shape}, np.block([grad_w, grad_b, grad_xi]) shape: {np.block([grad_w, grad_b, grad_xi]).shape}")
+            descent_direction = grad_c - jacobian.dot(np.linalg.solve(hessian_y, np.block([grad_w, grad_b, grad_xi])))
             c = c - beta * descent_direction
             grad_norm=np.linalg.norm(descent_direction)
             print(f"Upper iter: {epoch}, grad norm of hyperfunction: {grad_norm}")
@@ -253,11 +254,11 @@ class SVM_Problem:
             h12 += self.t * temp * self.y_train[i]**2 * self.x_train[i].reshape((self.feature, 1))
             h13[:, i] = self.t * temp * self.y_train[i] * self.x_train[i] # .reshape((self.feature, 1))
             h22 += self.t * temp * self.y_train[i]**2
-            h23[i] = self.t * temp * self.y_train[i]
+            h23[0, i] = self.t * temp * self.y_train[i]
             h33[i, i] = self.t * temp + self.t / (c[i] - xi[i])**2
         
-        print(f"shapes: h11: {h11.shape}, h12: {h12.shape}, h13: {h13.shape}, h22: {h22.shape}, h23: {h23.shape}, h33: {h33.shape}")
-        return np.stack(
+        # print(f"shapes: h11: {h11.shape}, h12: {h12.shape}, h13: {h13.shape}, h22: {h22.shape}, h23: {h23.shape}, h33: {h33.shape}")
+        return np.block(
             [
                 [h11, h12, h13],
                 [h12.T, h22, h23],
@@ -267,7 +268,7 @@ class SVM_Problem:
     
     def lower_jacobian(self, c, w, b, xi):
         """nabla_x nabla_y tilde_g"""
-        return 0, 0, -self.t * np.sum([1 / (c[i] - xi[i])**2 for i in range(self.y_train.shape[0])])
+        return np.block([np.zeros((self.y_train.shape[0], self.feature)), np.zeros((self.y_train.shape[0], 1)), -self.t * np.diag([1 / (c[i] - xi[i])**2 for i in range(self.y_train.shape[0])])])
     
     def inv_hessian(self,  c, w, b, xi):
         """inverse of hessian"""
@@ -278,34 +279,51 @@ class SVM_Problem:
         pass
     
     def compute_metrics(self, c, w, b, xi):
-        c_tensor = torch.Tensor(c)
-        w_tensor = torch.Tensor(w)
-        b_tensor = torch.Tensor(b)
-        xi_tensor = torch.Tensor(xi)
+        # c_tensor = torch.Tensor(c)
+        # w_tensor = torch.Tensor(w)
+        # b_tensor = torch.Tensor(b)
+        # xi_tensor = torch.Tensor(xi)
         
-        x = torch.reshape(torch.Tensor(self.y_val), (torch.Tensor(self.y_val).shape[0],1)) 
-        x = x* F.linear(torch.Tensor(self.x_val), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
+        # x = torch.reshape(torch.Tensor(self.y_val), (torch.Tensor(self.y_val).shape[0],1)) 
+        # x = x* F.linear(torch.Tensor(self.x_val), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
+        
+        x = self.y_val # .reshape((self.y_val.shape[0], 1))
+        x = x.dot(self.x_val.dot(w) + b)
+        # loss_upper = np.sum(np.exp(1 - x)) + 0.5 * np.linalg.norm(c)**2
 
-        x1 = torch.reshape(torch.Tensor(self.y_test), (torch.Tensor(self.y_test).shape[0],1)) 
-        x1 = x1 * F.linear(torch.Tensor(self.x_test), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
-        # test_loss_upper= torch.sum(torch.sigmoid(x1))
-        test_loss_upper = torch.sum(torch.exp(1 - x1))
+        # x1 = torch.reshape(torch.Tensor(self.y_test), (torch.Tensor(self.y_test).shape[0],1)) 
+        # x1 = x1 * F.linear(torch.Tensor(self.x_test), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
+        
+        x1 = self.y_test # .reshape((self.y_test.shape[0], 1))
+        x1 = x1.dot(self.x_test.dot(w) + b)
+        
+        # test_loss_upper = torch.sum(torch.exp(1 - x1))
+        test_loss_upper = np.sum(np.exp(1 - x1))
 
         # val_loss_F = (torch.sum(torch.exp(1-x))).detach().numpy()/y_val.shape[0]
         # test_loss_F = test_loss_upper.detach().numpy()/y_test.shape[0]
 
-        val_loss = (torch.sum(torch.exp(1 - x))).detach().numpy() / self.y_val.shape[0]
-        test_loss = test_loss_upper.detach().numpy() / self.y_test.shape[0]
+        # val_loss = (torch.sum(torch.exp(1 - x))).detach().numpy() / self.y_val.shape[0]
+        # test_loss = test_loss_upper.detach().numpy() / self.y_test.shape[0]
+        
+        val_loss = np.sum(np.exp(1 - x)) / self.y_val.shape[0]
+        test_loss = test_loss_upper / self.y_test.shape[0]
 
         ###### Accuracy
-        q = torch.tensor(self.y_train) * (w_tensor @ self.x_train.T + b_tensor)
-        train_acc = (q>0).sum() / len(self.y_train)
+        q = self.y_train # .reshape((self.y_train.shape[0], 1))
+        q = q.dot(self.x_train.dot(w) + b)
+        # q = torch.tensor(self.y_train) * (w_tensor @ self.x_train.T + b_tensor)
+        train_acc = (q > 0).sum() / len(self.y_train)
 
-        q = torch.tensor(self.y_val) * (w_tensor @ self.x_val.T + b_tensor)
-        val_acc = (q>0).sum() / len(self.y_val)
+        q = self.y_val # .reshape((self.y_val.shape[0], 1))
+        q = q.dot(self.x_val.dot(w) + b)
+        # q = torch.tensor(self.y_val) * (w_tensor @ self.x_val.T + b_tensor)
+        val_acc = (q > 0).sum() / len(self.y_val)
 
-        q = torch.tensor(self.y_test) * (w_tensor @ self.x_test.T + b_tensor)
-        test_acc = (q>0).sum() / len(self.y_test)
+        q = self.y_test # .reshape((self.y_test.shape[0], 1))
+        q = q.dot(self.x_test.dot(w) + b)
+        # q = torch.tensor(self.y_test) * (w_tensor @ self.x_test.T + b_tensor)
+        test_acc = (q > 0).sum() / len(self.y_test)
         
         return {
             #'train_loss': train_loss,
