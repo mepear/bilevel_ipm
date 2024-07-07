@@ -31,7 +31,7 @@ class Barrier_BLO:
         # print(f"c: {c}, w: {w}, b: {b}, xi: {xi}")
         # print(f"constraints: {self.problem.lower_constraints(c, w, b, xi, m=0.0)}")
         i, grad_norm = 0, float('inf')
-        while grad_norm > epsilon and i < max_iters_inner / np.sqrt(M):
+        while grad_norm > epsilon and i < max_iters_inner:
             grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
             w_old, b_old, xi_old = w, b, xi
             # print(grad_w, grad_b, grad_xi)
@@ -47,7 +47,7 @@ class Barrier_BLO:
             # delta_w, delta_b, delta_xi = w - w_old, b - b_old, xi - xi_old
             grad_norm = np.linalg.norm(grad_w) + np.linalg.norm(grad_b) + np.linalg.norm(grad_xi)
             # print(f"    Inner loop PGD total iter: {i}, gradient w: {grad_w}, gradient b: {grad_b}, gradient xi: {grad_xi}")
-            print(f"    Inner loop PGD total iter: {i}, grad norm: {grad_norm}")
+            print(f"    Inner loop PGD total iter: {i}, grad norm: {grad_norm}， M: {M}")
             i += 1
             
         grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
@@ -59,7 +59,7 @@ class Barrier_BLO:
         converged = False
         while not converged and M >= lower_bound_M:
             w, b, xi, converged=self.projected_gradient_descent(c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha)
-            M /= 1.1
+            M /= 2
             w0, b0, xi0 = w, b, xi
         return w, b, xi, M
     
@@ -223,8 +223,8 @@ class SVM_Problem:
         
         for i in range(self.y_val.shape[0]):
             temp = np.exp(1 - self.y_val[i] * (self.x_train[i].dot(w) + b))
-            grad_w += temp * self.y_val[i] * self.x_val[i]
-            grad_b += temp * self.y_val[i]
+            grad_w -= temp * self.y_val[i] * self.x_val[i]
+            grad_b -= temp * self.y_val[i]
         
         return grad_w, grad_b, grad_xi
     
