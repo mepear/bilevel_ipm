@@ -25,7 +25,7 @@ class Barrier_BLO:
         self.verbose = verbose
     
     # def projected_gradient_descent(self, x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_2,alpha):
-    def projected_gradient_descent(self, c0, w0, b0, xi0, M, max_iters_inner,epsilon,alpha):
+    def projected_gradient_descent(self, c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha):
         c = c0
         w, b, xi = self.problem.proj_to_lower_constraints(c0, w0, b0, xi0, m=M)
         # print(f"c: {c}, w: {w}, b: {b}, xi: {xi}")
@@ -36,8 +36,8 @@ class Barrier_BLO:
             w_old, b_old, xi_old = w, b, xi
             # print(grad_w, grad_b, grad_xi)
             # print(grad_w.shape, grad_b.shape, grad_xi.shape)
-            K = max(M , 0.01)
-            w, b, xi = w_old - K * alpha * grad_w, b_old - K * alpha * grad_b, xi_old - K * alpha * grad_xi
+            # K = max(M, 1e-2)
+            w, b, xi = w_old - M * alpha * grad_w, b_old - M * alpha * grad_b, xi_old - M * alpha * grad_xi
             # print(f"    Inner loop PGD total iter: {i}, w old: {w}, b old: {b}, xi old: {xi}")
             w, b, xi = self.problem.proj_to_lower_constraints(c, w, b, xi, m=M)
             # print(f"    Inner loop PGD total iter: {i}, w new: {w}, b new: {b}, xi new: {xi}")
@@ -47,12 +47,12 @@ class Barrier_BLO:
             # delta_w, delta_b, delta_xi = w - w_old, b - b_old, xi - xi_old
             grad_norm = np.linalg.norm(grad_w) + np.linalg.norm(grad_b) + np.linalg.norm(grad_xi)
             # print(f"    Inner loop PGD total iter: {i}, gradient w: {grad_w}, gradient b: {grad_b}, gradient xi: {grad_xi}")
-            print(f"    Inner loop PGD total iter: {i}, grad norm: {grad_norm}， M: {M}")
+            print(f"    Inner loop PGD curr iter: {i}, grad norm: {grad_norm}, M: {M}")
             i += 1
             
         grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
         grad_norm = np.linalg.norm(grad_w) + np.linalg.norm(grad_b) + np.linalg.norm(grad_xi)
-        print(f"    Inner loop PGD total iter: {i}, grad norm: {grad_norm}")
+        print(f"    Inner loop PGD total iter: {i}, grad norm: {grad_norm}, M: {M}")
         return w, b, xi, grad_norm < epsilon
     
     def lower_loop(self, c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha, lower_bound_M=1e-6):
@@ -61,7 +61,8 @@ class Barrier_BLO:
             w, b, xi, converged=self.projected_gradient_descent(c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha)
             M /= 2
             w0, b0, xi0 = w, b, xi
-        return w, b, xi, M
+            break # this break is just for debugging
+        return w, b, xi, M * 2
     
     def upper_loop(self, c0, w0, b0, xi0, hparams):
         """
@@ -86,7 +87,6 @@ class Barrier_BLO:
         grad_norm = float('inf')
         while grad_norm > epsilon and epoch < max_iters_outer:
             # variables.append({'c': c, 'xi': xi, 'w': w, 'b': b}) # uncomment this if you want to see all variables
-            
             w, b, xi, M = self.lower_loop(c, w, b, xi, M, max_iters_inner, epsilon, alpha)
             grad_c = self.problem.upper_grad_x(c)
             grad_w, grad_b, grad_xi = self.problem.upper_grad_y(c, w, b, xi)
@@ -102,7 +102,8 @@ class Barrier_BLO:
             curr_metric = self.problem.compute_metrics(c, w, b, xi)
             metrics.append(curr_metric)
             
-            if epoch%10==0 and self.verbose:
+            if epoch%5==0 and self.verbose:
+                # print(f"c: {c}, w: {w}, b: {b}, xi: {xi}")
                 print(f"Epoch [{epoch}/{max_iters_outer}]:",
                 "val acc: {:.2f}".format(curr_metric['val_acc']),
                 "val loss: {:.2f}".format(curr_metric['val_loss']),
@@ -214,12 +215,12 @@ class SVM_Problem:
         return c
     
     def lower_grad_x(self, c, w, b, xi, t=1e-3):
-        return self.y_train.shape[0] * self.t * sum([1 / (c[i] - xi[i]) for i in range(self.y_train.shape[0])])
+        return - self.y_train.shape[0] * self.t * sum([1 / (c[i] - xi[i]) for i in range(self.y_train.shape[0])])
     
     def upper_grad_y(self, c, w, b, xi):
         grad_w = np.zeros(self.feature)
         grad_b = 0.0
-        grad_xi = np.zeros(self.y_train.shape[0])
+        grad_xi = np.zeros(xi.shape)
         
         for i in range(self.y_val.shape[0]):
             temp = np.exp(1 - self.y_val[i] * (self.x_train[i].dot(w) + b))
@@ -296,14 +297,14 @@ class SVM_Problem:
         # x = x* F.linear(torch.Tensor(self.x_val), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
         
         x = self.y_val # .reshape((self.y_val.shape[0], 1))
-        x = x.dot(self.x_val.dot(w) + b)
+        x = np.multiply(x, self.x_val.dot(w) + b)
         # loss_upper = np.sum(np.exp(1 - x)) + 0.5 * np.linalg.norm(c)**2
 
         # x1 = torch.reshape(torch.Tensor(self.y_test), (torch.Tensor(self.y_test).shape[0],1)) 
         # x1 = x1 * F.linear(torch.Tensor(self.x_test), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
         
         x1 = self.y_test # .reshape((self.y_test.shape[0], 1))
-        x1 = x1.dot(self.x_test.dot(w) + b)
+        x1 = np.multiply(x1, self.x_test.dot(w) + b)
         
         # test_loss_upper = torch.sum(torch.exp(1 - x1))
         test_loss_upper = np.sum(np.exp(1 - x1))
@@ -319,17 +320,18 @@ class SVM_Problem:
 
         ###### Accuracy
         q = self.y_train # .reshape((self.y_train.shape[0], 1))
-        q = q.dot(self.x_train.dot(w) + b)
+        q = np.multiply(q, self.x_train.dot(w) + b)
+        # print(f"self.y_train shape: {self.y_train.shape}, self.x_train shape: {self.x_train.shape}, w and b shape: {w.shape, b.shape}, self.x_train.dot(w) + b: {self.x_train.dot(w) + b}, q: {q}")
         # q = torch.tensor(self.y_train) * (w_tensor @ self.x_train.T + b_tensor)
         train_acc = (q > 0).sum() / len(self.y_train)
 
         q = self.y_val # .reshape((self.y_val.shape[0], 1))
-        q = q.dot(self.x_val.dot(w) + b)
+        q = np.multiply(q, self.x_val.dot(w) + b)
         # q = torch.tensor(self.y_val) * (w_tensor @ self.x_val.T + b_tensor)
         val_acc = (q > 0).sum() / len(self.y_val)
 
         q = self.y_test # .reshape((self.y_test.shape[0], 1))
-        q = q.dot(self.x_test.dot(w) + b)
+        q = np.multiply(q, self.x_test.dot(w) + b)
         # q = torch.tensor(self.y_test) * (w_tensor @ self.x_test.T + b_tensor)
         test_acc = (q > 0).sum() / len(self.y_test)
         
