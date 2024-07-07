@@ -288,32 +288,13 @@ class SVM_Problem:
         pass
     
     def compute_metrics(self, c, w, b, xi):
-        # c_tensor = torch.Tensor(c)
-        # w_tensor = torch.Tensor(w)
-        # b_tensor = torch.Tensor(b)
-        # xi_tensor = torch.Tensor(xi)
-        
-        # x = torch.reshape(torch.Tensor(self.y_val), (torch.Tensor(self.y_val).shape[0],1)) 
-        # x = x* F.linear(torch.Tensor(self.x_val), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
-        
         x = self.y_val # .reshape((self.y_val.shape[0], 1))
         x = np.multiply(x, self.x_val.dot(w) + b)
         # loss_upper = np.sum(np.exp(1 - x)) + 0.5 * np.linalg.norm(c)**2
-
-        # x1 = torch.reshape(torch.Tensor(self.y_test), (torch.Tensor(self.y_test).shape[0],1)) 
-        # x1 = x1 * F.linear(torch.Tensor(self.x_test), w_tensor, b_tensor) # / torch.linalg.norm(w_tensor)
         
         x1 = self.y_test # .reshape((self.y_test.shape[0], 1))
         x1 = np.multiply(x1, self.x_test.dot(w) + b)
-        
-        # test_loss_upper = torch.sum(torch.exp(1 - x1))
         test_loss_upper = np.sum(np.exp(1 - x1))
-
-        # val_loss_F = (torch.sum(torch.exp(1-x))).detach().numpy()/y_val.shape[0]
-        # test_loss_F = test_loss_upper.detach().numpy()/y_test.shape[0]
-
-        # val_loss = (torch.sum(torch.exp(1 - x))).detach().numpy() / self.y_val.shape[0]
-        # test_loss = test_loss_upper.detach().numpy() / self.y_test.shape[0]
         
         val_loss = np.sum(np.exp(1 - x)) / self.y_val.shape[0]
         test_loss = test_loss_upper / self.y_test.shape[0]
@@ -322,17 +303,14 @@ class SVM_Problem:
         q = self.y_train # .reshape((self.y_train.shape[0], 1))
         q = np.multiply(q, self.x_train.dot(w) + b)
         # print(f"self.y_train shape: {self.y_train.shape}, self.x_train shape: {self.x_train.shape}, w and b shape: {w.shape, b.shape}, self.x_train.dot(w) + b: {self.x_train.dot(w) + b}, q: {q}")
-        # q = torch.tensor(self.y_train) * (w_tensor @ self.x_train.T + b_tensor)
         train_acc = (q > 0).sum() / len(self.y_train)
 
         q = self.y_val # .reshape((self.y_val.shape[0], 1))
         q = np.multiply(q, self.x_val.dot(w) + b)
-        # q = torch.tensor(self.y_val) * (w_tensor @ self.x_val.T + b_tensor)
         val_acc = (q > 0).sum() / len(self.y_val)
 
         q = self.y_test # .reshape((self.y_test.shape[0], 1))
         q = np.multiply(q, self.x_test.dot(w) + b)
-        # q = torch.tensor(self.y_test) * (w_tensor @ self.x_test.T + b_tensor)
         test_acc = (q > 0).sum() / len(self.y_test)
         
         return {
@@ -402,7 +380,7 @@ if __name__ == "__main__":
     epochs = 80
     plot_results = True
 
-    c0, w0, b0, xi0 = np.random.randn(n_train), np.random.randn(45), np.random.randn(), np.random.randn(n_train)
+    c0, w0, b0, xi0 = 10 * np.ones(n_train), np.random.randn(45), np.random.randn(), np.random.randn(n_train)
     for seed in range(10):
 
         x_train, y_train, x_val, y_val, x_test, y_test = train_val_test_split(data, seed, n_train, n_val)
