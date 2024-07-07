@@ -31,15 +31,23 @@ class Barrier_BLO:
         # print(f"c: {c}, w: {w}, b: {b}, xi: {xi}")
         # print(f"constraints: {self.problem.lower_constraints(c, w, b, xi, m=0.0)}")
         i, grad_norm = 0, float('inf')
-        while grad_norm > epsilon and i < max_iters_inner:
+        while grad_norm > epsilon and i < max_iters_inner / np.sqrt(M):
             grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
             w_old, b_old, xi_old = w, b, xi
             # print(grad_w, grad_b, grad_xi)
             # print(grad_w.shape, grad_b.shape, grad_xi.shape)
-            w, b, xi = w_old - alpha * grad_w, b_old - alpha * grad_b, xi_old - alpha * grad_xi
+            K = max(M , 0.01)
+            w, b, xi = w_old - K * alpha * grad_w, b_old - K * alpha * grad_b, xi_old - K * alpha * grad_xi
+            # print(f"    Inner loop PGD total iter: {i}, w old: {w}, b old: {b}, xi old: {xi}")
             w, b, xi = self.problem.proj_to_lower_constraints(c, w, b, xi, m=M)
+            # print(f"    Inner loop PGD total iter: {i}, w new: {w}, b new: {b}, xi new: {xi}")
+            # delta = np.linalg.norm(w_old - w) + np.linalg.norm(b_old - b) + np.linalg.norm(xi_old - xi)
+            # if delta < 0.005:
+            #    break
             # delta_w, delta_b, delta_xi = w - w_old, b - b_old, xi - xi_old
             grad_norm = np.linalg.norm(grad_w) + np.linalg.norm(grad_b) + np.linalg.norm(grad_xi)
+            # print(f"    Inner loop PGD total iter: {i}, gradient w: {grad_w}, gradient b: {grad_b}, gradient xi: {grad_xi}")
+            print(f"    Inner loop PGD total iter: {i}, grad norm: {grad_norm}")
             i += 1
             
         grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
@@ -51,7 +59,7 @@ class Barrier_BLO:
         converged = False
         while not converged and M >= lower_bound_M:
             w, b, xi, converged=self.projected_gradient_descent(c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha)
-            M /= 2
+            M /= 1.1
             w0, b0, xi0 = w, b, xi
         return w, b, xi, M
     
@@ -228,13 +236,13 @@ class SVM_Problem:
         # print(f"self.y_train: {self.y_train}")
         
         for i in range(self.y_train.shape[0]):
-            temp = 1 / (self.y_train[i] * (self.x_train[i].dot(w) + b + xi[i] - 1))
+            temp = 1 / (self.y_train[i] * (self.x_train[i].dot(w) + b) + xi[i] - 1)
             # print(f"self.x_train[i].dot(w) + b + xi[i] - 1: {self.x_train[i].dot(w) + b + xi[i] - 1}")
             # print(f"temp: {temp}")
             grad_w -= self.t * temp * self.y_train[i] * self.x_train[i]
             grad_b -= self.t * temp * self.y_train[i]
         
-        grad_xi = np.array([-self.t * temp - self.t * 1 / (c[i] - xi[i]) for i in range(self.y_train.shape[0])])
+        grad_xi = np.array([-self.t * temp + self.t * 1 / (c[i] - xi[i]) for i in range(self.y_train.shape[0])])
         
         return grad_w, grad_b, grad_xi
     
