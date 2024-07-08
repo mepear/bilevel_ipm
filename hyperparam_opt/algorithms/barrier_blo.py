@@ -27,8 +27,10 @@ class Barrier_BLO:
     # def projected_gradient_descent(self, x,t,y_0,M,max_iters_inner,epsilon_1,epsilon_2,alpha):
     def projected_gradient_descent(self, c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha):
         c = c0
-        w, b, xi = self.problem.proj_to_lower_constraints(c0, w0, b0, xi0, m=M)
-        # print(f"c: {c}, w: {w}, b: {b}, xi: {xi}")
+        # print(f"before projection c: {c0}, w: {w0}, b: {b0}, xi: {xi0}")
+        if not self.problem.check_constraints(c0, w0, b0, xi0, m=M):
+            w, b, xi = self.problem.proj_to_lower_constraints(c0, w0, b0, xi0, m=M)
+        # print(f"after projection c: {c}, w: {w}, b: {b}, xi: {xi}")
         # print(f"constraints: {self.problem.lower_constraints(c, w, b, xi, m=0.0)}")
         i, grad_norm = 0, float('inf')
         while grad_norm > epsilon and i < max_iters_inner:
@@ -36,10 +38,11 @@ class Barrier_BLO:
             w_old, b_old, xi_old = w, b, xi
             # print(grad_w, grad_b, grad_xi)
             # print(grad_w.shape, grad_b.shape, grad_xi.shape)
-            # K = max(M, 1e-2)
-            w, b, xi = w_old - M * alpha * grad_w, b_old - M * alpha * grad_b, xi_old - M * alpha * grad_xi
+            K = max(M, 1e-2)
+            w, b, xi = w_old - K * alpha * grad_w, b_old - K * alpha * grad_b, xi_old - K * alpha * grad_xi
             # print(f"    Inner loop PGD total iter: {i}, w old: {w}, b old: {b}, xi old: {xi}")
-            w, b, xi = self.problem.proj_to_lower_constraints(c, w, b, xi, m=M)
+            if not self.problem.check_constraints(c0, w0, b0, xi0, m=M):
+                w, b, xi = self.problem.proj_to_lower_constraints(c, w, b, xi, m=M)
             # print(f"    Inner loop PGD total iter: {i}, w new: {w}, b new: {b}, xi new: {xi}")
             # delta = np.linalg.norm(w_old - w) + np.linalg.norm(b_old - b) + np.linalg.norm(xi_old - xi)
             # if delta < 0.005:
@@ -47,7 +50,7 @@ class Barrier_BLO:
             # delta_w, delta_b, delta_xi = w - w_old, b - b_old, xi - xi_old
             grad_norm = np.linalg.norm(grad_w) + np.linalg.norm(grad_b) + np.linalg.norm(grad_xi)
             # print(f"    Inner loop PGD total iter: {i}, gradient w: {grad_w}, gradient b: {grad_b}, gradient xi: {grad_xi}")
-            print(f"    Inner loop PGD curr iter: {i}, grad norm: {grad_norm}, M: {M}")
+            # print(f"    Inner loop PGD curr iter: {i}, grad norm: {grad_norm}, M: {M}")
             i += 1
             
         grad_w, grad_b, grad_xi = self.problem.lower_grad_y(c, w, b, xi)
@@ -61,7 +64,7 @@ class Barrier_BLO:
             w, b, xi, converged=self.projected_gradient_descent(c0, w0, b0, xi0, M, max_iters_inner, epsilon, alpha)
             M /= 2
             w0, b0, xi0 = w, b, xi
-            break # this break is just for debugging
+            # break # this break is just for debugging
         return w, b, xi, M * 2
     
     def upper_loop(self, c0, w0, b0, xi0, hparams):
@@ -87,7 +90,7 @@ class Barrier_BLO:
         grad_norm = float('inf')
         while grad_norm > epsilon and epoch < max_iters_outer:
             # variables.append({'c': c, 'xi': xi, 'w': w, 'b': b}) # uncomment this if you want to see all variables
-            w, b, xi, M = self.lower_loop(c, w, b, xi, M, max_iters_inner, epsilon, alpha)
+            w, b, xi, M = self.lower_loop(c, w, b, xi, 0.5, max_iters_inner, epsilon, alpha)
             grad_c = self.problem.upper_grad_x(c)
             grad_w, grad_b, grad_xi = self.problem.upper_grad_y(c, w, b, xi)
             hessian_y = self.problem.lower_hessian(c, w, b, xi)
@@ -95,6 +98,8 @@ class Barrier_BLO:
             print(f"hessian_y shape: {hessian_y.shape}, jacobian shape: {jacobian.shape}, np.block([grad_w, grad_b, grad_xi]) shape: {np.block([grad_w, grad_b, grad_xi]).shape}")
             descent_direction = grad_c - jacobian.dot(np.linalg.solve(hessian_y, np.block([grad_w, grad_b, grad_xi])))
             c = c - beta * descent_direction
+            # c[c <= 1.5] = 1.5
+
             grad_norm=np.linalg.norm(descent_direction)
             print(f"Upper iter: {epoch}, grad norm of hyperfunction: {grad_norm}")
             
@@ -181,7 +186,19 @@ class SVM_Problem:
         # print(f"[xi <= c - m]: {[xi - c <= - m]}")
         return constraints
     
-    def proj_to_lower_constraints(self, c0, w0, b0, xi0, m=0.0):
+    def check_constraints(self, c0, w0, b0, xi0, m):
+        # Check the constraints for each sample
+        for i in range(len(self.y_train)):
+            if not np.all(1 - self.x_train[i] - self.y_train[i] * (self.x_train[i] @ w0 + b0) <= -m):
+                return False
+            
+        # Check the additional constraints on xi
+            if not all(xi0 - c0 <= -m):
+                return False
+        return True
+
+
+    def proj_to_lower_constraints(self, c0, w0, b0, xi0, m):
         """Using cvxpy to do the projection"""
         d = self.feature
         # # upper variable
