@@ -79,13 +79,16 @@ class Barrier_BLO:
         val_acc_list=[]
         test_acc_list=[]
         time_computation=[]
-        algorithm_start_time=time.time()
-
         metrics = []
+        algorithm_start_time=time.time()
+        
         # variables = []
         
         c = c0
         w, b, xi = w0, b0, xi0
+        curr_metric = self.problem.compute_metrics(c, w, b, xi)
+        curr_metric['time_computation'] = time.time() - algorithm_start_time
+        metrics.append(curr_metric)
         epoch = 0
         grad_norm = float('inf')
         while grad_norm > epsilon and epoch < max_iters_outer:
@@ -105,6 +108,7 @@ class Barrier_BLO:
             
             # update metrics
             curr_metric = self.problem.compute_metrics(c, w, b, xi)
+            curr_metric['time_computation'] = time.time() - algorithm_start_time
             metrics.append(curr_metric)
             
             if epoch%5==0 and self.verbose:
@@ -120,7 +124,8 @@ class Barrier_BLO:
             test_loss_list.append(curr_metric['test_acc']) # length 118
             val_acc_list.append(curr_metric['val_acc'])
             test_acc_list.append(curr_metric['test_acc'])
-            time_computation.append(time.time() - algorithm_start_time)
+            curr_metric['time_computation'] = time.time() - algorithm_start_time
+            time_computation.append(curr_metric['time_computation'])
             epoch += 1
             
         print(f"Outer loop total iter: {epoch}, final grad norm: {grad_norm}")

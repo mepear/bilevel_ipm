@@ -232,7 +232,7 @@ def blocc(x_train, y_train, x_val, y_val, x_test, y_test, hparams, epochs, verbo
         val_acc_list.append(val_acc)
         test_acc_list.append(test_acc)
         time_computation.append(time.time()-algorithm_start_time)
-        print(f"w:{w_tensor}, b:{b_tensor}, xi:{xi_tensor}, c:{C_tensor}")
+        # print(f"w:{w_tensor}, b:{b_tensor}, xi:{xi_tensor}, c:{C_tensor}")
     return metrics, variables
 
 
