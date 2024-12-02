@@ -1,3 +1,4 @@
+import cvxpy as cp
 import numpy as np
 
 class BilevelProblem:
@@ -11,6 +12,7 @@ class BilevelProblem:
         self.g_scalars_1 = data['g_scalars_1']
         self.E_matrices_2 = data['E_matrices_2']
         self.g_scalars_2 = data['g_scalars_2']
+        self.g_scalars_3 = data['g_scalars_3']
         self.n = data['n']
         self.num_constraints_h1 = data['num_constraints_1']
         self.num_constraints_h2 = 2 * self.n
@@ -20,15 +22,32 @@ class BilevelProblem:
         return 0.5 * z.T @ self.A @ z + self.b.T @ z
 
     def g(self, x, y):
-        return 0.5 * y.T @ self.C @ y + self.d.T @ y + x.T @ self.D @ y
+        if isinstance(y, cp.Variable):
+            return 0.5 * cp.quad_form(y, self.C) + self.d.T @ y + x.T @ self.D @ y
+        else:
+            return 0.5 * y.T @ self.C @ y + self.d.T @ y + x.T @ self.D @ y
 
     def h_1(self, x, y, i):
-        return x.T @ self.E_matrices_1[i] @ y - self.g_scalars_1[i]
+        if isinstance(y, cp.Variable):
+            return x.T @ self.E_matrices_1[i] @ y - self.g_scalars_1[i]
+        else:
+            return x.T @ self.E_matrices_1[i] @ y - self.g_scalars_1[i]
 
     def h_2(self, x, y, i):
-        constraint_type = i // self.n
-        index = i % self.n
-        return self.E_matrices_2[constraint_type][index, index] * y[index] - self.g_scalars_2[constraint_type][index]
+        if isinstance(y, cp.Variable):
+            constraint_type = i // self.n
+            index = i % self.n
+            return self.E_matrices_2[constraint_type][index, index] * y[index] - self.g_scalars_2[constraint_type][index]
+        else:
+            constraint_type = i // self.n
+            index = i % self.n
+            return self.E_matrices_2[constraint_type][index, index] * y[index] - self.g_scalars_2[constraint_type][index]
+
+    def h_3(self, x, y):
+        if isinstance(y, cp.Variable):
+            return cp.sum(0.5 * cp.sum_squares(y) - self.g_scalars_3 / self.n)
+        else:
+            return 0.5 * np.linalg.norm(y) ** 2 - self.g_scalars_3
 
     def gradient_f_x(self, x, y):
         z = np.concatenate([x, y])
@@ -61,6 +80,9 @@ class BilevelProblem:
         grad = np.zeros(self.n)
         grad[index] = self.E_matrices_2[constraint_type][index, index]
         return grad
+    
+    def gradient_h_3_y(self, x, y):
+        return y
 
     def hessian_g_xy(self, x, y):
         return self.D
@@ -76,5 +98,8 @@ class BilevelProblem:
 
     def hessian_h_2_yy(self, x, y, i):
         return np.zeros((self.n, self.n))
+    
+    def hessian_h_3_yy(self, x, y):
+        return np.eye(self.n)
 
-
+    
