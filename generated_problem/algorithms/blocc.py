@@ -100,8 +100,9 @@ class BLOCC:
 
             for inner_iter in range (self.maxmin_g_inner_max_iters):
                 gradient_L_g_y = self.problem.gradient_g_y(x,y) + self.compute_inner_product_y(x, y, mu_mid)
-                y = y - self.alpha_g_y * gradient_L_g_y
-                y_proj = self.project_to_constraints(x, y)
+                # y = y - self.alpha_g_y * gradient_L_g_y
+                # y_proj = self.project_to_constraints(x, y)
+                y_proj = self.project_to_constraints(x, y - self.alpha_g_y * gradient_L_g_y)
                 if (np.linalg.norm(y - y_proj) / self.alpha_g_y) <= self.epsilon_inner_y_g:
                     print(f"Inner loop for L_g converges when iter = {inner_iter}")
                     break
@@ -132,8 +133,9 @@ class BLOCC:
             
             for inner_iter in range (self.maxmin_g_inner_max_iters):
                 gradient_L_F_y = self.problem.gradient_f_y(x,y) + self.gamma * self.problem.gradient_g_y(x,y) + self.compute_inner_product_y(x, y, mu_mid)
-                y = y - self.alpha_F_y * gradient_L_F_y
-                y_proj = self.project_to_constraints(x, y)
+                # y = y - self.alpha_F_y * gradient_L_F_y
+                # y_proj = self.project_to_constraints(x, y)
+                y_proj = self.project_to_constraints(x, y - self.alpha_F_y * gradient_L_F_y)
                 if (np.linalg.norm(y - y_proj) / self.alpha_F_y) <= self.epsilon_inner_y_F:
                     print(f"Inner loop for L_F converges when iter = {inner_iter}")
                     break
