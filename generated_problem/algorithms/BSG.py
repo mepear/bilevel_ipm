@@ -177,6 +177,17 @@ class BSG:
             print(f"Outer iter for z={outer_iter}, Projected Gradient norm w.r.t z={(np.linalg.norm(z_new - z_old) / self.alpha_z)}")
             z = z_new
         return y, z
+    
+    def check_multiplier(self, x, y, z):
+        for i in range(self.problem.num_constraints_h1):
+            hi_val = self.problem.h_1(x, y, i)
+            if abs(hi_val) <= 1e-10:
+                print(f"h1 {i}-th constraint is active, multiplier: {z[i]}")
+            
+        for i in range(self.problem.num_constraints_h2):
+            hi_val = self.problem.h_2(x, y, i)
+            if abs(hi_val) <= 1e-10:
+                print(f"h2 {i}-th constraint is active, multiplier: {z[i + self.problem.num_constraints_h2]}")
 
     def bsg(self, x_init, y_init, z_init):
         x = x_init.copy()
@@ -186,15 +197,14 @@ class BSG:
         start_time = time.time()
         L = np.hstack((np.eye(self.problem.n), np.zeros((self.problem.n, self.problem.num_constraints_h1 + self.problem.num_constraints_h2)))).T
 
-    
-
-    
         for iter in range (self.max_iters_x):
             [y, z] = self.Lagrangian_l(x, y, z)
 
             f_x = self.problem.gradient_f_x(x, y)
             G_x = self.G_x(x, y, z)
             G_v = self.G_v(x, y, z)
+            print(f"Condition number of G_v: {np.linalg.cond(G_v)}")
+            self.check_multiplier(x, y, z)
             G_v_inv = np.linalg.inv(G_v)
             f_y = self.problem.gradient_f_y(x, y)
 
