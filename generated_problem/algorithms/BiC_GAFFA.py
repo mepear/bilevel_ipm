@@ -123,8 +123,7 @@ class BiC_GAFFA:
             gradient_g_y_x_theta = self.problem.gradient_g_y(x, theta)
             d_theta = gradient_g_y_x_theta  + inner_product_y_x_theta_z + (1 / self.gamma_1) * (theta - y)
 
-            theta = theta - self.eta * d_theta
-            theta = self.project_to_constraints(x, y)
+            theta = self.project_to_constraints(x, theta - self.eta * d_theta)
 
             constraint_vector = self.constraint_vector(x, y)
             lambd = z + self.gamma_2 * constraint_vector
@@ -141,14 +140,17 @@ class BiC_GAFFA:
             gradient_g_y_x_y = self.problem.gradient_g_y(x, y)
             inner_product_y_x_y_lambd = self.compute_inner_product_y(x, y, lambd)
             d_y = (1 / c) * gradient_f_y_x_y + gradient_g_y_x_y + inner_product_y_x_y_lambd - (y - theta) / self.gamma_1
-
+            
             g_x_theta = self.problem.g(x, theta)
             d_z = -(z - lambd)/self.gamma_2 - g_x_theta
+            
+            print(f"norm of dx, dy, dx: {np.linalg.norm(d_x), np.linalg.norm(d_y), np.linalg.norm(d_z)}")
 
             x_new = x - self.alpha * d_x
             
-            y_new = y - self.alpha * d_y
-            x_new, y_new = self.project_to_joint_constraints(x, y)
+            print(f"before: norm of y {np.linalg.norm(y)}")
+            y_new = self.project_to_constraints(x, y - self.alpha * d_y)
+            print(f"after: norm of y {np.linalg.norm(y_new)}")
 
             z_new = z - self.alpha * d_z
             z_new = np.maximum(z, 0)
@@ -174,5 +176,51 @@ class BiC_GAFFA:
                 'time': elapsed_time
             })
             print(f"f(x,y)={f_value}")
+        print(f"end: norm of y {np.linalg.norm(y)}")
         return x, y, history
 
+
+if __name__=="__main__":
+    import numpy as np
+    import cvxpy as cp
+
+    from problems.data_generation import generate_problem_data
+    from problems.problem_definition import BilevelProblem
+    from algorithms.barrier_blo_box import BarrierBLO
+    from algorithms.blocc import BLOCC
+    from algorithms.implicit_gradient_descent import IGD
+    from algorithms.BiC_GAFFA import BiC_GAFFA
+    from algorithms.BSG import BSG
+
+    n = 60
+    seed = 9
+
+    data = generate_problem_data(n, seed)
+    problem = BilevelProblem(data)
+
+    x_init = np.zeros(n)
+    y_init = np.zeros(n)
+    z_init = np.zeros(problem.num_constraints_h1 + problem.num_constraints_h2)
+    theta_init = np.zeros(n)
+    y_g_init = np.zeros(n)
+    y_F_init = np.zeros(n)
+    mu_g_init = np.zeros(problem.num_constraints_h1 + problem.num_constraints_h2)
+    mu_F_init = np.zeros(problem.num_constraints_h1 + problem.num_constraints_h2)
+    hparams = {
+            'bic_gaffa':{
+                'alpha':0.001,
+                'c':1,
+                'tau':1.3,
+                'gamma_1':10,
+                'gamma_2':1,
+                'eta':1,
+                'r':1,
+                'epsilon':0.1,
+                'max_iters':100
+            }
+        }   
+
+    bic_algo = BiC_GAFFA(problem, hparams)
+
+    x_opt_bic, y_opt_bic, history = bic_algo.bic_gaffa(x_init, y_init, z_init, theta_init)
+    print(problem.f(x_opt_bic, y_opt_bic))
