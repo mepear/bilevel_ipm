@@ -561,7 +561,7 @@ class BarrierBLO:
     #     return y
 
 
-    def upper_loop(self, x_init, y_init):
+    def upper_loop(self, x_init, y_init, min_step=1e-6):
         x = x_init.copy()
         y = y_init.copy()
         history = []
@@ -584,7 +584,9 @@ class BarrierBLO:
             if np.linalg.norm(grad_norm_x) < self.epsilon_x:
                 print("Outer loop converged at iteration", outer_iter)
                 break
-            x_new = x - (self.alpha_x / np.sqrt(outer_iter + 1)) * grad_F_x
+            step_size = max(self.alpha_x / np.sqrt(outer_iter + 1), min_step)
+            # step_size = self.alpha_x / np.sqrt(outer_iter + 1)
+            x_new = x - step_size * grad_F_x
             # x_new = x - self.alpha_x * grad_F_x
             elapsed_time = time.time() - start_time    
             
