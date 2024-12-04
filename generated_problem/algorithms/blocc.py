@@ -115,7 +115,7 @@ class BLOCC:
             mu_old = mu
             
             
-            if (np.linalg.norm(mu_new - mu_old) / self.beta_g_y) <= self.epsilon_outer_y_g:
+            if (np.linalg.norm(mu_new - mu_mid) / self.beta_g_y) <= self.epsilon_outer_y_g:
                 print(f"Outer loop for L_g converges when iter = {outer_iter}")
                 break
             print(f"Outer iter for L_g={outer_iter}, Projected Gradient norm w.r.t mu of L_g={(np.linalg.norm(mu_new - mu_old) / self.beta_g_y)}")
@@ -148,7 +148,7 @@ class BLOCC:
             mu_old = mu
            
 
-            if (np.linalg.norm(mu_new - mu_old) / self.beta_F_y) <= self.epsilon_outer_y_F:
+            if (np.linalg.norm(mu_new - mu_mid) / self.beta_F_y) <= self.epsilon_outer_y_F:
                 print(f"Outer loop for L_F converges when iter = {outer_iter}")
                 break
             print(f"Outer iter for L_F={outer_iter}, Projected Gradient norm w.r.t mu of L_F={(np.linalg.norm(mu_new - mu_old) / self.beta_F_y)}")

@@ -84,6 +84,12 @@ class BilevelProblem:
     def gradient_h_3_y(self, x, y):
         return y
 
+    def hessian_f_xy(self, x, y):
+        return self.A[:self.n, self.n:]
+   
+    def hessian_f_yy(self, x, y):
+        return self.A[self.n:, self.n:]
+    
     def hessian_g_xy(self, x, y):
         return self.D
 
