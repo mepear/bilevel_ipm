@@ -147,7 +147,7 @@ class BSG:
         ])
         return combined_matrix
 
-    def Lagrangian_l(self, x, y_init, z_init):
+    def Lagrangian_l(self, x, y_init, z_init, start_time, max_elapsed_time):
         z = z_init.copy()
         y = y_init.copy()
         for outer_iter in range (self.max_iters_z):
@@ -158,13 +158,12 @@ class BSG:
 
             for inner_iter in range (self.max_iters_y):
                 gradient_L_g_y = self.problem.gradient_g_y(x,y) + self.compute_inner_product_y(x, y, z_mid)
-                y_proj = self.project_to_constraints(x, y - self.alpha_y * gradient_L_g_y)
-                if (np.linalg.norm(y - y_proj) / self.alpha_y) <= self.epsilon_y:
-                    print(f"Inner loop for y converges when iter = {inner_iter}")
+                if np.linalg.norm(gradient_L_g_y) <= self.epsilon_y:
+                    # print(f"Inner loop for y converges when iter = {inner_iter}")
                     break
-                print(f"Inner iter for y={inner_iter}, Projected Gradient norm w.r.t y={(np.linalg.norm(y - y_proj) / self.alpha_y)}")
-                y = y_proj
-                
+                # print(f"Inner iter for y={inner_iter}, Projected Gradient norm w.r.t y={np.linalg.norm(gradient_L_g_y)}")
+                y = y - self.alpha_y * gradient_L_g_y
+           
            
             z_new = z_mid + self.alpha_z * self.constraint_vector(x, y)
             z_new = np.maximum(z_new, 0)
@@ -172,10 +171,14 @@ class BSG:
             
             
             if (np.linalg.norm(z_new - z_old) / self.alpha_z) <= self.epsilon_z:
-                print(f"Outer loop for z converges when iter = {outer_iter}")
+                # print(f"Outer loop for z converges when iter = {outer_iter}")
                 break
-            print(f"Outer iter for z={outer_iter}, Projected Gradient norm w.r.t z={(np.linalg.norm(z_new - z_old) / self.alpha_z)}")
+            # print(f"Outer iter for z={outer_iter}, Projected Gradient norm w.r.t z={(np.linalg.norm(z_new - z_old) / self.alpha_z)}")
             z = z_new
+            elapsed_time = time.time() - start_time
+            if elapsed_time > max_elapsed_time:
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                break
         return y, z
     
     def check_multiplier(self, x, y, z):
@@ -189,7 +192,7 @@ class BSG:
             if abs(hi_val) <= 1e-10:
                 print(f"h2 {i}-th constraint is active, multiplier: {z[i + self.problem.num_constraints_h2]}")
 
-    def bsg(self, x_init, y_init, z_init):
+    def bsg(self, x_init, y_init, z_init, max_elapsed_time):
         x = x_init.copy()
         y = y_init.copy()
         z = z_init.copy()
@@ -198,13 +201,13 @@ class BSG:
         L = np.hstack((np.eye(self.problem.n), np.zeros((self.problem.n, self.problem.num_constraints_h1 + self.problem.num_constraints_h2)))).T
 
         for iter in range (self.max_iters_x):
-            [y, z] = self.Lagrangian_l(x, y, z)
+            [y, z] = self.Lagrangian_l(x, y, z, start_time, max_elapsed_time)
 
             f_x = self.problem.gradient_f_x(x, y)
             G_x = self.G_x(x, y, z)
             G_v = self.G_v(x, y, z)
-            print(f"Condition number of G_v: {np.linalg.cond(G_v)}")
-            self.check_multiplier(x, y, z)
+            # print(f"Condition number of G_v: {np.linalg.cond(G_v)}")
+            # self.check_multiplier(x, y, z)
             G_v_inv = np.linalg.inv(G_v)
             f_y = self.problem.gradient_f_y(x, y)
 
@@ -227,5 +230,7 @@ class BSG:
                 'time': elapsed_time
             })
             print(f"f(x, y) = {f_value}, grad_norm of hyperfunction= {np.linalg.norm(Grad)}")
-        
+            if elapsed_time > max_elapsed_time:
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                break
         return x, y, history

@@ -66,34 +66,6 @@ class BiC_GAFFA:
         constraint_vector = np.array(constraints)
         return constraint_vector
     
-    def project_to_joint_constraints(self, x_init, y_init):
-        n = self.problem.n
-        xy_init = np.hstack((x_init, y_init))
-    
-        def objective(xy):
-            x = xy[:n]
-            y = xy[n:]
-            return np.sum((x - x_init)**2 + (y - y_init)**2)
-    
-        def constraints_func(xy):
-            x = xy[:n]
-            y = xy[n:]
-            cons = []
-            for i in range(self.problem.num_constraints_h1):
-                cons.append(self.problem.h_1(x, y, i))
-            for i in range(self.problem.num_constraints_h2):
-                cons.append(self.problem.h_2(x, y, i))
-            return np.array(cons)
-    
-        cons = {'type': 'ineq', 'fun': constraints_func}
-    
-        res = minimize(objective, xy_init, method='trust-constr', constraints=cons,
-                   options={'maxiter': 1000})
-    
-        x_proj = res.x[:n]
-        y_proj = res.x[n:]
-        return x_proj, y_proj
-
     def project_to_constraints(self, x, y_init):
         n = self.problem.n
         y = cp.Variable(n)
@@ -109,7 +81,7 @@ class BiC_GAFFA:
         prob.solve(solver=cp.OSQP)
         return y.value
     
-    def bic_gaffa(self, x_init, y_init, z_init, theta_init):
+    def bic_gaffa(self, x_init, y_init, z_init, theta_init, max_elapsed_time):
         x = x_init.copy()
         y = y_init.copy()
         z = z_init.copy()
@@ -144,13 +116,13 @@ class BiC_GAFFA:
             g_x_theta = self.problem.g(x, theta)
             d_z = -(z - lambd)/self.gamma_2 - g_x_theta
             
-            print(f"norm of dx, dy, dx: {np.linalg.norm(d_x), np.linalg.norm(d_y), np.linalg.norm(d_z)}")
+            # print(f"norm of dx, dy, dx: {np.linalg.norm(d_x), np.linalg.norm(d_y), np.linalg.norm(d_z)}")
 
             x_new = x - self.alpha * d_x
             
-            print(f"before: norm of y {np.linalg.norm(y)}")
-            y_new = self.project_to_constraints(x, y - self.alpha * d_y)
-            print(f"after: norm of y {np.linalg.norm(y_new)}")
+            # print(f"before: norm of y {np.linalg.norm(y)}")
+            y_new = self.project_to_constraints(x_new, y - self.alpha * d_y)
+            # print(f"after: norm of y {np.linalg.norm(y_new)}")
 
             z_new = z - self.alpha * d_z
             z_new = np.maximum(z, 0)
@@ -176,51 +148,9 @@ class BiC_GAFFA:
                 'time': elapsed_time
             })
             print(f"f(x,y)={f_value}")
+            
+            if elapsed_time > max_elapsed_time:
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                break
         print(f"end: norm of y {np.linalg.norm(y)}")
         return x, y, history
-
-
-if __name__=="__main__":
-    import numpy as np
-    import cvxpy as cp
-
-    from problems.data_generation import generate_problem_data
-    from problems.problem_definition import BilevelProblem
-    from algorithms.barrier_blo_box import BarrierBLO
-    from algorithms.blocc import BLOCC
-    from algorithms.implicit_gradient_descent import IGD
-    from algorithms.BiC_GAFFA import BiC_GAFFA
-    from algorithms.BSG import BSG
-
-    n = 60
-    seed = 9
-
-    data = generate_problem_data(n, seed)
-    problem = BilevelProblem(data)
-
-    x_init = np.zeros(n)
-    y_init = np.zeros(n)
-    z_init = np.zeros(problem.num_constraints_h1 + problem.num_constraints_h2)
-    theta_init = np.zeros(n)
-    y_g_init = np.zeros(n)
-    y_F_init = np.zeros(n)
-    mu_g_init = np.zeros(problem.num_constraints_h1 + problem.num_constraints_h2)
-    mu_F_init = np.zeros(problem.num_constraints_h1 + problem.num_constraints_h2)
-    hparams = {
-            'bic_gaffa':{
-                'alpha':0.001,
-                'c':1,
-                'tau':1.3,
-                'gamma_1':10,
-                'gamma_2':1,
-                'eta':1,
-                'r':1,
-                'epsilon':0.1,
-                'max_iters':100
-            }
-        }   
-
-    bic_algo = BiC_GAFFA(problem, hparams)
-
-    x_opt_bic, y_opt_bic, history = bic_algo.bic_gaffa(x_init, y_init, z_init, theta_init)
-    print(problem.f(x_opt_bic, y_opt_bic))
