@@ -161,6 +161,10 @@ class BSG:
                 if np.linalg.norm(gradient_L_g_y) <= self.epsilon_y:
                     # print(f"Inner loop for y converges when iter = {inner_iter}")
                     break
+                elapsed_time = time.time() - start_time
+                # if elapsed_time > max_elapsed_time:
+                #     print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                #     break
                 # print(f"Inner iter for y={inner_iter}, Projected Gradient norm w.r.t y={np.linalg.norm(gradient_L_g_y)}")
                 y = y - self.alpha_y * gradient_L_g_y
            
@@ -176,9 +180,9 @@ class BSG:
             # print(f"Outer iter for z={outer_iter}, Projected Gradient norm w.r.t z={(np.linalg.norm(z_new - z_old) / self.alpha_z)}")
             z = z_new
             elapsed_time = time.time() - start_time
-            if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                break
+            # if elapsed_time > max_elapsed_time:
+            #     print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+            #     break
         return y, z
     
     def check_multiplier(self, x, y, z):
@@ -201,7 +205,7 @@ class BSG:
         L = np.hstack((np.eye(self.problem.n), np.zeros((self.problem.n, self.problem.num_constraints_h1 + self.problem.num_constraints_h2)))).T
 
         for iter in range (self.max_iters_x):
-            [y, z] = self.Lagrangian_l(x, y, z, start_time, max_elapsed_time)
+            y, z = self.Lagrangian_l(x, y, z, start_time, max_elapsed_time)
 
             f_x = self.problem.gradient_f_x(x, y)
             G_x = self.G_x(x, y, z)
@@ -211,14 +215,16 @@ class BSG:
             G_v_inv = np.linalg.inv(G_v)
             f_y = self.problem.gradient_f_y(x, y)
 
-            Grad = -(f_x - G_x @ G_v_inv @ L @ f_y)
+            Grad = f_x - G_x @ G_v_inv @ L @ f_y
 
             if np.linalg.norm(Grad) < self.epsilon_x:
                 print("Main loop converged at iteration", iter)
                 break
             elapsed_time = time.time() - start_time 
-            x_new = x - (self.alpha_x / np.sqrt(iter + 1)) * Grad
-            x= x_new
+            if elapsed_time > max_elapsed_time:
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                break
+            x = x - self.alpha_x * Grad
  
             f_value = self.problem.f(x, y)
             history.append({
@@ -230,7 +236,5 @@ class BSG:
                 'time': elapsed_time
             })
             print(f"f(x, y) = {f_value}, grad_norm of hyperfunction= {np.linalg.norm(Grad)}")
-            if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                break
+            
         return x, y, history

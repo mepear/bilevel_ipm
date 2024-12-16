@@ -66,21 +66,6 @@ class BiC_GAFFA:
         constraint_vector = np.array(constraints)
         return constraint_vector
     
-    def project_to_constraints(self, x, y_init):
-        n = self.problem.n
-        y = cp.Variable(n)
-        objective = cp.Minimize(cp.sum_squares(y - y_init))
-        constraints = []
-
-        for i in range(self.problem.num_constraints_h1):
-            constraints.append(self.problem.h_1(x, y, i) <= 0)
-        for i in range(self.problem.num_constraints_h2):
-            constraints.append(self.problem.h_2(x, y, i) <= 0)
-
-        prob = cp.Problem(objective, constraints)
-        prob.solve(solver=cp.OSQP)
-        return y.value
-    
     def bic_gaffa(self, x_init, y_init, z_init, theta_init, max_elapsed_time):
         x = x_init.copy()
         y = y_init.copy()
@@ -95,10 +80,9 @@ class BiC_GAFFA:
             gradient_g_y_x_theta = self.problem.gradient_g_y(x, theta)
             d_theta = gradient_g_y_x_theta  + inner_product_y_x_theta_z + (1 / self.gamma_1) * (theta - y)
 
-            theta = self.project_to_constraints(x, theta - self.eta * d_theta)
+            theta = theta - self.eta * d_theta
 
-            constraint_vector = self.constraint_vector(x, y)
-            lambd = z + self.gamma_2 * constraint_vector
+            lambd = z + self.gamma_2 * self.constraint_vector(x, y)
             lambd = np.maximum(lambd, 0)
 
             gradient_f_x_x_y = self.problem.gradient_f_x(x, y)
@@ -113,15 +97,14 @@ class BiC_GAFFA:
             inner_product_y_x_y_lambd = self.compute_inner_product_y(x, y, lambd)
             d_y = (1 / c) * gradient_f_y_x_y + gradient_g_y_x_y + inner_product_y_x_y_lambd - (y - theta) / self.gamma_1
             
-            g_x_theta = self.problem.g(x, theta)
-            d_z = -(z - lambd)/self.gamma_2 - g_x_theta
+            d_z = -(z - lambd) / self.gamma_2 - self.constraint_vector(x, theta)
             
             # print(f"norm of dx, dy, dx: {np.linalg.norm(d_x), np.linalg.norm(d_y), np.linalg.norm(d_z)}")
 
             x_new = x - self.alpha * d_x
             
             # print(f"before: norm of y {np.linalg.norm(y)}")
-            y_new = self.project_to_constraints(x_new, y - self.alpha * d_y)
+            y_new = y - self.alpha * d_y
             # print(f"after: norm of y {np.linalg.norm(y_new)}")
 
             z_new = z - self.alpha * d_z
