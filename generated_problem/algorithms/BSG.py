@@ -196,7 +196,7 @@ class BSG:
             if abs(hi_val) <= 1e-10:
                 print(f"h2 {i}-th constraint is active, multiplier: {z[i + self.problem.num_constraints_h2]}")
 
-    def bsg(self, x_init, y_init, z_init, max_elapsed_time):
+    def bsg(self, x_init, y_init, z_init, max_elapsed_time, step_size_type="const"):
         x = x_init.copy()
         y = y_init.copy()
         z = z_init.copy()
@@ -224,7 +224,13 @@ class BSG:
             if elapsed_time > max_elapsed_time:
                 print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
                 break
-            x = x - self.alpha_x * Grad
+            
+            if step_size_type == "const":
+                x = x - self.alpha_x * Grad
+            elif step_size_type == "diminish":
+                x = x - self.alpha_x / np.sqrt(iter + 1) * Grad
+            else:
+                raise ValueError("step_size_type can only be 'const' or 'diminish'")
  
             f_value = self.problem.f(x, y)
             history.append({

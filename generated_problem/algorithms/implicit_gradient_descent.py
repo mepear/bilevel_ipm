@@ -30,7 +30,7 @@ class IGD:
             y = y_new
         return y
     
-    def upper_loop(self, x_init, y_init):
+    def upper_loop(self, x_init, y_init, step_size_type="const"):
         x = x_init.copy()
         y = y_init.copy()
         history = []
@@ -51,7 +51,13 @@ class IGD:
             grad_F_x = grad_f_x - hessian_xy @ v
             grad_norm_x = np.linalg.norm(grad_F_x)
 
-            x_new = x - self.alpha_x * grad_F_x
+            if step_size_type == "const":
+                x_new = x - self.alpha_x * grad_F_x
+            elif step_size_type == "diminish":
+                x_new = x - self.alpha_x / np.sqrt(iter + 1) * grad_F_x
+            else:
+                raise ValueError("step_size_type can only be 'const' or 'diminish'")
+            
             elapsed_time = time.time() - start_time
 
             if np.linalg.norm(grad_norm_x) < self.epsilon_x:

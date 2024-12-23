@@ -565,7 +565,7 @@ class BarrierBLO:
     #     return y
 
 
-    def upper_loop(self, x_init, y_init, max_elapsed_time):
+    def upper_loop(self, x_init, y_init, max_elapsed_time, step_size_type="const"):
         x = x_init.copy()
         y = y_init.copy()
         history = []
@@ -592,10 +592,15 @@ class BarrierBLO:
             if elapsed_time > max_elapsed_time:
                 print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
                 break
-            step_size = self.alpha_x / np.sqrt(outer_iter + 1)
-            # step_size = self.alpha_x / np.sqrt(outer_iter + 1)
+            
+            if step_size_type == "const":
+                step_size = self.alpha_x
+            elif step_size_type == "diminish":
+                step_size = self.alpha_x / np.sqrt(outer_iter + 1)
+            else:
+                raise ValueError("step_size_type can only be 'const' or 'diminish'")
+            
             x_new = x - step_size * grad_F_x
-            # x_new = x - self.alpha_x * grad_F_x
             elapsed_time = time.time() - start_time    
             
             x = x_new

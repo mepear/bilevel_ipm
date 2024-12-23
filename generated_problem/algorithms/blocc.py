@@ -223,7 +223,7 @@ class BLOCC:
     #         mu = mu_new
     #     return y, mu
 
-    def blocc(self, x_init, y_g_init, y_F_init, mu_g_init, mu_F_init, max_elapsed_time):
+    def blocc(self, x_init, y_g_init, y_F_init, mu_g_init, mu_F_init, max_elapsed_time, step_size_type="const"):
         x = x_init.copy()
         y_g = y_g_init.copy()
         y_F = y_F_init.copy()
@@ -254,7 +254,14 @@ class BLOCC:
             if elapsed_time > max_elapsed_time:
                 print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
                 break
-            x = x - self.alpha_x * grad_F_x
+            
+            if step_size_type == "const":
+                x = x - self.alpha_x * grad_F_x
+            elif step_size_type == "diminish":
+                x = x - self.alpha_x / np.sqrt(iter + 1) * grad_F_x
+            else:
+                raise ValueError("step_size_type can only be 'const' or 'diminish'")
+            
             y = y_F
             f_value = self.problem.f(x, y)
             history.append({
