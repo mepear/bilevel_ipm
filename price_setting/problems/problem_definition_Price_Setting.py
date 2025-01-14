@@ -48,7 +48,7 @@ class BilevelProblem:
         return grad_T
 
     def gradient_g_xy(self, T, x, y):
-        grad_x = self.c_1 + T
+        grad_x = self.c_1.copy() + T
         grad_y = self.c_2.copy()
         return grad_x, grad_y
 

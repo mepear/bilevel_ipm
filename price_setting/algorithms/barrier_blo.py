@@ -127,7 +127,7 @@ class BarrierBLO:
         return x_opt, y_opt
 
     
-    def inner_loop(self, T, x_init, y_init):  # Newton method
+    def inner_loop(self, T, x_init, y_init, start_time, max_elapsed_time):  # Newton method
         x = x_init.copy()
         y = y_init.copy()
         x, y = self.project_to_constraints(T, x, y)
@@ -139,6 +139,10 @@ class BarrierBLO:
             if grad_norm_xy < self.epsilon_xy:
                 print(f"Inner loop converged at iteration {iter}")
                 break
+            elapsed_time = time.time() - start_time
+            if elapsed_time > max_elapsed_time:
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting inner loop.")
+                return None, None
             Hessian_xy_xy = self.hessian_tilde_g_xy_xy(T, x, y)
             try:
                 v = np.linalg.solve(Hessian_xy_xy, grad_xy)
@@ -152,24 +156,77 @@ class BarrierBLO:
                 y_projected = y_new
             else:
                 x_projected, y_projected = self.project_to_constraints(T, x_new, y_new)
-            print(f"  Gradient norm = {grad_norm_xy}")
+            # print(f"  Gradient norm = {grad_norm_xy}")
 
             x = x_projected
             y = y_projected
 
         return x, y
     
-
-    def upper_loop(self, T_init, x_init, y_init, max_elapsed_time):
+    
+    def upper_loop(self, T_init, x_init, y_init, max_elapsed_time, step_size_type="const"):
+        start_time = time.time()
         T = T_init.copy()
         x = x_init.copy()
         y = y_init.copy()
+        x_temp, y_temp = self.inner_loop(T, x, y, start_time, max_elapsed_time)
+        if y_temp is None and x_temp is None:
+            print("Time limit exceeded in Inner Loop Exiting bfbm.")
+        else:
+            x, y = x_temp, y_temp
+        grad_f_T = self.problem.gradient_f_T(T, x, y)
+        grad_f_x, grad_f_y = self.problem.gradient_f_xy(T, x, y)
+        Hess_g_T_xy = self.hessian_tilde_g_T_xy(T, x, y)
+        Hess_g_xy_xy = self.hessian_tilde_g_xy_xy(T, x, y)
+        grad_f_xy_full = np.concatenate((grad_f_x, grad_f_y))
+        v = np.linalg.solve(Hess_g_xy_xy, grad_f_xy_full)
+        # print(f"x={x},y={y},v={v},grad_f_xy_full={grad_f_xy_full},Hess_g_T_xy={Hess_g_T_xy}")
+        grad_F_T = grad_f_T - Hess_g_T_xy @ v
+        grad_norm_T = np.linalg.norm(grad_F_T)
         history = []
-        start_time = time.time()
-
+        
         for outer_iter in range(self.outer_max_iters):
-            print(f"Outer iteration {outer_iter + 1}")
-            x, y = self.inner_loop(T, x, y)
+            f_value = self.problem.f(T, x, y)
+
+            elapsed_time = time.time() - start_time
+            history.append({
+                'iteration': outer_iter,
+                'T': T.copy(),
+                'x': x.copy(),
+                'y': y.copy(),
+                'f_value': f_value,
+                'grad_norm': grad_norm_T,
+                'time': elapsed_time
+            })
+            print(f"f(T, x, y) = {f_value}, grad_norm of hyperfunction= {grad_norm_T}")
+
+            if grad_norm_T < self.epsilon_T:
+                # print("Outer loop converged at iteration", outer_iter)
+                break
+            
+            elapsed_time = time.time() - start_time
+            if elapsed_time > max_elapsed_time:
+                # print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                break
+
+            if step_size_type == "const":
+                step_size = self.alpha_T
+            elif step_size_type == "diminish":
+                step_size = self.alpha_T / np.sqrt(outer_iter + 1)
+            else:
+                raise ValueError("step_size_type can only be 'const' or 'diminish'")
+            
+            T_new = T - step_size * grad_F_T
+
+            x_temp, y_temp = self.inner_loop(T, x, y, start_time, max_elapsed_time)
+            if y_temp is None and x_temp is None:
+                print("Time limit exceeded in Inner Loop Exiting bfbm.")
+                break
+            else:
+                x, y = x_temp, y_temp
+
+            T = T_new
+
             grad_f_T = self.problem.gradient_f_T(T, x, y)
             grad_f_x, grad_f_y = self.problem.gradient_f_xy(T, x, y)
             Hess_g_T_xy = self.hessian_tilde_g_T_xy(T, x, y)
@@ -179,25 +236,10 @@ class BarrierBLO:
             # print(f"x={x},y={y},v={v},grad_f_xy_full={grad_f_xy_full},Hess_g_T_xy={Hess_g_T_xy}")
             grad_F_T = grad_f_T - Hess_g_T_xy @ v
             grad_norm_T = np.linalg.norm(grad_F_T)
-            if grad_norm_T < self.epsilon_T:
-                print("Outer loop converged at iteration", outer_iter)
-                break
-            elapsed_time = time.time() - start_time
-            if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                break
-            step_size = self.alpha_T / np.sqrt(outer_iter + 1)
-            T = T - step_size * grad_F_T
-            f_value = self.problem.f(T, x, y)
-            history.append({
-            'iteration': outer_iter,
-            'T': T.copy(),
-            'x': x.copy(),
-            'y': y.copy(),
-            'f_value': f_value,
-            'grad_norm': grad_norm_T,
-            'time': elapsed_time
-            })
-            print(f"f(T, x, y) = {f_value}, grad_norm of hyperfunction= {grad_norm_T}")
-
+            
+            
+            
+            
+            
+            
         return T, x, y, history

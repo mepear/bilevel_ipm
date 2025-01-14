@@ -16,10 +16,12 @@ def generate_problem_data(n, seed=0):
             max_idx = np.argmax(B[i])
             B[i, max_idx] = B[i, max_idx] + (1 - B[i, max_idx]) + 0.1
 
+    B = B * 0.2
+
     b = np.abs(np.random.randn(num_constraints_1))
     
-    c_1 = np.abs(np.random.randn(n))
-    c_2 = np.abs(np.random.randn(n))
+    c_1 = np.ones(60)
+    c_2 = np.ones(60)
     
     E_matrices_2 = [-np.eye(n), np.eye(n), -np.eye(n), np.eye(n)]
 

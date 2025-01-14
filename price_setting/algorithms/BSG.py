@@ -7,231 +7,263 @@ class BSG:
         self.problem = problem
         BSG_params = hparams.get('BSG', {})
 
-        self.alpha_x = BSG_params.get('alpha_x', 1e-4)
-        self.alpha_y = BSG_params.get('alpha_y', 1e-4)
+        self.alpha_T = BSG_params.get('alpha_T', 1e-4)
+        self.alpha_xy = BSG_params.get('alpha_xy', 1e-4)
         self.alpha_z = BSG_params.get('alpha_z', 1e-4)
-        self.epsilon_x = BSG_params.get('epsilon_x', 1e-4)
-        self.epsilon_y = BSG_params.get('epsilon_y', 1e-4)
+        self.epsilon_T = BSG_params.get('epsilon_T', 1e-4)
+        self.epsilon_xy = BSG_params.get('epsilon_xy', 1e-4)
         self.epsilon_z = BSG_params.get('epsilon_z', 1e-4)
-        self.max_iters_x = BSG_params.get('max_iters_x', 10000)
-        self.max_iters_y = BSG_params.get('max_iters_y', 10000)
+        self.max_iters_T = BSG_params.get('max_iters_T', 10000)
+        self.max_iters_xy = BSG_params.get('max_iters_xy', 10000)
         self.max_iters_z = BSG_params.get('max_iters_z', 10000)
         
-    def project_to_constraints(self, x, y_init):
+    def project_to_constraints(self, T, x_init, y_init):
         n = self.problem.n
-        y = cp.Variable(n)
-        objective = cp.Minimize(cp.sum_squares(y - y_init))
+        x_var = cp.Variable(n)
+        y_var = cp.Variable(n)
+
+        objective = cp.Minimize(cp.sum_squares(x_var - x_init) + cp.sum_squares(y_var - y_init))
+
         constraints = []
+        M = self.M
 
         for i in range(self.problem.num_constraints_h1):
-            constraints.append(self.problem.h_1(x, y, i) <= 0)
+            constraints.append(self.problem.h_1(T, x_var, y_var, i) <= -M)
         for i in range(self.problem.num_constraints_h2):
-            constraints.append(self.problem.h_2(x, y, i) <= 0)
+            constraints.append(self.problem.h_2(T, x_var, y_var, i) <= -M)
 
         prob = cp.Problem(objective, constraints)
         prob.solve(solver=cp.OSQP)
-        return y.value
+        if prob.status not in ["optimal", "optimal_inaccurate"] or x_var.value is None or y_var.value is None:
+            # print(f"Projection failed with status: {prob.status}")
+            return x_init, y_init
+        return x_var.value, y_var.value
     
-    def constraint_vector(self, x, y):
+    def constraint_vector(self, T, x, y):
         constraints = []
     
         for i in range(self.problem.num_constraints_h1):
-            constraints.append(self.problem.h_1(x, y, i))
+            constraints.append(self.problem.h_1(T, x, y, i))
     
         for i in range(self.problem.num_constraints_h2):
-            constraints.append(self.problem.h_2(x, y, i))
+            constraints.append(self.problem.h_2(T, x, y, i))
     
         constraint_vector = np.array(constraints)
         return constraint_vector
 
-    def compute_inner_product_y(self, x, y, z_vector):
+    def compute_inner_product_xy(self, T, x, y, z_vector):
         num_constraints_h1 = self.problem.num_constraints_h1
         num_constraints_h2 = self.problem.num_constraints_h2
         n = self.problem.n
         total_constraints = num_constraints_h1 + num_constraints_h2
-        
-        H_y = np.zeros((total_constraints, n))
+        H_xy = np.zeros((total_constraints, 2 * n))
         
         for i in range(num_constraints_h1):
-            H_y[i, :] = self.problem.gradient_h_1_y(x, y, i)
+            (grad_x, grad_y) = self.problem.gradient_h_1_xy(T, x, y, i)
+            grad_xy = np.concatenate([grad_x, grad_y])
+            H_xy[i, :] = grad_xy
         
         for i in range(num_constraints_h2):
-            H_y[num_constraints_h1 + i, :] = self.problem.gradient_h_2_y(x, y, i)
+            (grad_x, grad_y) = self.problem.gradient_h_2_xy(T, x, y, i)
+            grad_xy = np.concatenate([grad_x, grad_y])
+            H_xy[num_constraints_h1 + i, :] = grad_xy
         
-        z_grad_y = H_y.T @ z_vector
+        z_grad_xy = H_xy.T @ z_vector
         
-        return z_grad_y
+        return z_grad_xy
 
-    def hessian_inner_product_h_z_xy(self, x, y, z):
-        hessian = np.zeros((self.problem.n, self.problem.n))
+    def hessian_inner_product_h_z_T_xy(self, T, x, y, z):
+        hessian = np.zeros((self.problem.n, 2 * self.problem.n))
 
         for i in range(self.problem.num_constraints_h1):
-            hessian_matrix = self.problem.hessian_h_1_xy(x, y, i)
+            hessian_matrix = self.problem.hessian_h_1_T_xy(T, x, y, i)
             hessian += hessian_matrix * z[i]
 
         return hessian
     
-    def hessian_inner_product_h_z_yy(self, x, y, z):
-        hessian = np.zeros((self.problem.n, self.problem.n))
+    def hessian_inner_product_h_z_xy_xy(self, T, x, y, z):
+        hessian = np.zeros((2 * self.problem.n, 2 * self.problem.n))
 
         for i in range(self.problem.num_constraints_h1):
-            hessian += self.problem.hessian_h_1_yy(x, y, i) * z[i]
+            hessian += self.problem.hessian_h_1_xy_xy(T, x, y, i) * z[i]
 
         return hessian
 
-    def compute_z_hadamard_grad_x_h(self, x, y, z):
+    def compute_z_hadamard_grad_T_h(self, T, x, y, z):
         num_constraints = self.problem.num_constraints_h1 + self.problem.num_constraints_h2
-        H_x = np.zeros((num_constraints, self.problem.n))
+        H_T = np.zeros((num_constraints, self.problem.n))
 
         for i in range(self.problem.num_constraints_h1):
-            H_x[i, :] = self.problem.gradient_h_1_x(x, y, i)
+            H_T[i, :] = self.problem.gradient_h_1_T(T, x, y, i)
 
         for i in range(self.problem.num_constraints_h2):
-            H_x[self.problem.num_constraints_h1 + i, :] = self.problem.gradient_h_2_x(x, y, i)
+            H_T[self.problem.num_constraints_h1 + i, :] = self.problem.gradient_h_2_T(T, x, y, i)
 
-        H_x_T = H_x.T
+        H_T_T = H_T.T
 
         z = z.reshape(1, -1)
-        hadamard_matrix = H_x_T * z
+        hadamard_matrix = H_T_T * z
 
         return hadamard_matrix
     
-    def compute_z_hadamard_grad_y_h(self, x, y, z):
+    def compute_z_hadamard_grad_xy_h(self, T, x, y, z):
         num_constraints = self.problem.num_constraints_h1 + self.problem.num_constraints_h2
-        H_y = np.zeros((num_constraints, self.problem.n))
+        H_xy = np.zeros((num_constraints, 2 * self.problem.n))
 
         for i in range(self.problem.num_constraints_h1):
-            H_y[i, :] = self.problem.gradient_h_1_y(x, y, i)
+            grad_x, grad_y = self.problem.gradient_h_1_xy(T, x, y, i)
+            H_xy[i, :] = np.concatenate([grad_x, grad_y])
 
         for i in range(self.problem.num_constraints_h2):
-            H_y[self.problem.num_constraints_h1 + i, :] = self.problem.gradient_h_2_y(x, y, i)
+            grad_x, grad_y = self.problem.gradient_h_2_xy(T, x, y, i)
+            H_xy[self.problem.num_constraints_h1 + i, :] = np.concatenate([grad_x, grad_y])
 
-        H_y_T = H_y.T
+        H_xy_T = H_xy.T
 
         z = z.reshape(1, -1)
-        hadamard_matrix = H_y_T * z
+        hadamard_matrix = H_xy_T * z
 
         return hadamard_matrix
     
-    def G_x(self, x_init, y_init, z_init):
+    def G_T(self, T_init, x_init, y_init, z_init):
+        T = T_init.copy()
         x = x_init.copy()
         y = y_init.copy()
         z = z_init.copy()
-        hessian_inner_product_h_z_xy = self.hessian_inner_product_h_z_xy(x, y, z)
-        L_xy = self.problem.hessian_g_xy(x, y) + hessian_inner_product_h_z_xy
-        hadamard_matrix_z_x = self.compute_z_hadamard_grad_x_h(x, y, z)
-        concatenated_matrix = np.hstack((L_xy, hadamard_matrix_z_x))
+        hessian_inner_product_h_z_T_xy = self.hessian_inner_product_h_z_T_xy(T, x, y, z)
+        L_T_xy = self.problem.hessian_g_T_xy(T, x, y) + hessian_inner_product_h_z_T_xy
+        hadamard_matrix_z_T = self.compute_z_hadamard_grad_T_h(T, x, y, z)
+        concatenated_matrix = np.hstack((L_T_xy, hadamard_matrix_z_T))
 
         return concatenated_matrix
     
-    def G_v(self, x_init, y_init, z_init):
+    def G_v(self, T_init, x_init, y_init, z_init):
+        T = T_init.copy()
         x = x_init.copy()
         y = y_init.copy()
         z = z_init.copy()
-        hessian_inner_product_h_z_yy = self.hessian_inner_product_h_z_yy(x, y, z)
-        L_yy = self.problem.hessian_g_yy(x, y) + hessian_inner_product_h_z_yy
-        hadamard_matrix_z_y = self.compute_z_hadamard_grad_y_h(x, y, z)
-        constraint_vector = self.constraint_vector(x, y)
+        hessian_inner_product_h_z_xy_xy = self.hessian_inner_product_h_z_xy_xy(T, x, y, z)
+        L_xy_xy = self.problem.hessian_g_xy_xy(T, x, y) + hessian_inner_product_h_z_xy_xy
+        hadamard_matrix_z_xy = self.compute_z_hadamard_grad_xy_h(T, x, y, z)
+        constraint_vector = self.constraint_vector(T, x, y)
         constraint_matrix = np.diag(constraint_vector)
 
         num_constraints = self.problem.num_constraints_h1 + self.problem.num_constraints_h2
-        H_y = np.zeros((num_constraints, self.problem.n))
+        H_xy = np.zeros((num_constraints, 2 * self.problem.n))
         for i in range(self.problem.num_constraints_h1):
-            H_y[i, :] = self.problem.gradient_h_1_y(x, y, i)
+            grad_x, grad_y = self.problem.gradient_h_1_xy(T, x, y, i)
+            H_xy[i, :] = np.concatenate([grad_x, grad_y])
         for i in range(self.problem.num_constraints_h2):
-            H_y[self.problem.num_constraints_h1 + i, :] = self.problem.gradient_h_2_y(x, y, i)
+            grad_x, grad_y = self.problem.gradient_h_2_xy(T, x, y, i)
+            H_xy[self.problem.num_constraints_h1 + i, :] = np.concatenate([grad_x, grad_y])
         
         combined_matrix = np.block([
-            [L_yy, hadamard_matrix_z_y],
-            [H_y, constraint_matrix]
+            [L_xy_xy, hadamard_matrix_z_xy],
+            [H_xy, constraint_matrix]
         ])
         return combined_matrix
 
-    def Lagrangian_l(self, x, y_init, z_init, start_time, max_elapsed_time):
+    def Lagrangian_l(self, T, x_init, y_init, z_init, start_time, max_elapsed_time):
         z = z_init.copy()
+        x = x_init.copy()
         y = y_init.copy()
         for outer_iter in range (self.max_iters_z):
-            if outer_iter == 0:
-                z_mid = z
-            else:
-                z_mid = z + (outer_iter - 1) / (outer_iter + 2) * (z - z_old)
-
-            for inner_iter in range (self.max_iters_y):
-                gradient_L_g_y = self.problem.gradient_g_y(x,y) + self.compute_inner_product_y(x, y, z_mid)
-                if np.linalg.norm(gradient_L_g_y) <= self.epsilon_y:
-                    # print(f"Inner loop for y converges when iter = {inner_iter}")
+            for inner_iter in range (self.max_iters_xy):
+                (grad_x, grad_y) = self.problem.gradient_g_xy(T, x, y)
+                grad_xy = np.concatenate([grad_x, grad_y])
+                gradient_L_g_xy = grad_xy + self.compute_inner_product_xy(T, x, y, z)
+                if np.linalg.norm(gradient_L_g_xy) <= self.epsilon_xy:
+                    # print(f"Inner loop for xy converges when iter = {inner_iter}")
                     break
-                # print(f"Inner iter for y={inner_iter}, Projected Gradient norm w.r.t y={np.linalg.norm(gradient_L_g_y)}")
-                y = y - self.alpha_y * gradient_L_g_y
+                # print(f"Inner iter for xy={inner_iter}, Projected Gradient norm w.r.t xy={np.linalg.norm(gradient_L_g_xy)}")
+                x, y = x - self.alpha_xy * gradient_L_g_xy[:len(x)], y - self.alpha_xy * gradient_L_g_xy[len(x):]
            
-           
-            z_new = z_mid + self.alpha_z * self.constraint_vector(x, y)
+            stepsize = self.alpha_z #/ np.sqrt(outer_iter + 1)
+            z_new = z + stepsize * self.constraint_vector(T, x, y)
             z_new = np.maximum(z_new, 0)
-            z_old = z
             
             
-            if (np.linalg.norm(z_new - z_old) / self.alpha_z) <= self.epsilon_z:
+            if (np.linalg.norm(z_new - z) / stepsize) <= self.epsilon_z:
                 # print(f"Outer loop for z converges when iter = {outer_iter}")
                 break
-            # print(f"Outer iter for z={outer_iter}, Projected Gradient norm w.r.t z={(np.linalg.norm(z_new - z_old) / self.alpha_z)}")
+            # print(f"Outer iter for z={outer_iter}, Function value ={self.problem.g(T, x, y)+ z.T @ self.constraint_vector(T, x, y)}, Projected Gradient norm w.r.t z={(np.linalg.norm(z_new - z) / stepsize)}")
             z = z_new
             elapsed_time = time.time() - start_time
             if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                # print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
                 break
-        return y, z
+        return x, y, z
     
-    def check_multiplier(self, x, y, z):
-        for i in range(self.problem.num_constraints_h1):
-            hi_val = self.problem.h_1(x, y, i)
-            if abs(hi_val) <= 1e-10:
-                print(f"h1 {i}-th constraint is active, multiplier: {z[i]}")
-            
-        for i in range(self.problem.num_constraints_h2):
-            hi_val = self.problem.h_2(x, y, i)
-            if abs(hi_val) <= 1e-10:
-                print(f"h2 {i}-th constraint is active, multiplier: {z[i + self.problem.num_constraints_h2]}")
-
-    def bsg(self, x_init, y_init, z_init, max_elapsed_time):
+    def bsg(self, T_init, x_init, y_init, z_init, max_elapsed_time, step_size_type="const"):
+        start_time = time.time()
+        T = T_init.copy()
         x = x_init.copy()
         y = y_init.copy()
         z = z_init.copy()
+        x_temp, y_temp, z_temp = self.Lagrangian_l(T, x, y, z, start_time, max_elapsed_time)
+        if x_temp is None and y_temp is None and z_temp is None:
+            print("Time limit exceeded in Lagrangian_l. Exiting bsg.")
+        else:
+            x, y, z = x_temp, y_temp, z_temp
+        f_T = self.problem.gradient_f_T(T, x, y)
+        G_T = self.G_T(T, x, y, z)
+        G_v = self.G_v(T, x, y, z)
+        G_v_inv = np.linalg.inv(G_v)
+        f_x, f_y = self.problem.gradient_f_xy(T, x, y)
+        f_xy = np.concatenate([f_x, f_y])
+        L = np.hstack((np.eye(2 * self.problem.n), np.zeros((2 * self.problem.n, self.problem.num_constraints_h1 + self.problem.num_constraints_h2)))).T
+        Grad = f_T - G_T @ G_v_inv @ L @ f_xy
         history = []
-        start_time = time.time()
-        L = np.hstack((np.eye(self.problem.n), np.zeros((self.problem.n, self.problem.num_constraints_h1 + self.problem.num_constraints_h2)))).T
 
-        for iter in range (self.max_iters_x):
-            [y, z] = self.Lagrangian_l(x, y, z, start_time, max_elapsed_time)
+        for iter in range (self.max_iters_T):
+            # print(f"Main iteration {iter + 1}")
+            f_value = self.problem.f(T, x, y)
 
-            f_x = self.problem.gradient_f_x(x, y)
-            G_x = self.G_x(x, y, z)
-            G_v = self.G_v(x, y, z)
-            # print(f"Condition number of G_v: {np.linalg.cond(G_v)}")
-            # self.check_multiplier(x, y, z)
-            G_v_inv = np.linalg.inv(G_v)
-            f_y = self.problem.gradient_f_y(x, y)
-
-            Grad = -(f_x - G_x @ G_v_inv @ L @ f_y)
-
-            if np.linalg.norm(Grad) < self.epsilon_x:
-                print("Main loop converged at iteration", iter)
-                break
-            elapsed_time = time.time() - start_time 
-            if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                break
-            x_new = x - (self.alpha_x / np.sqrt(iter + 1)) * Grad
-            x= x_new
- 
-            f_value = self.problem.f(x, y)
+            elapsed_time = time.time() - start_time
             history.append({
                 'iteration': iter,
+                'T': T.copy(),
                 'x': x.copy(),
                 'y': y.copy(),
                 'f_value': f_value,
                 'grad_norm': np.linalg.norm(Grad),
                 'time': elapsed_time
             })
-            print(f"f(x, y) = {f_value}, grad_norm of hyperfunction= {np.linalg.norm(Grad)}")
+            # print(f"f(T, x, y) = {f_value}, grad_norm of hyperfunction= {np.linalg.norm(Grad)}")
             
-        return x, y, history
+            if np.linalg.norm(Grad) < self.epsilon_T:
+                # print("Main loop converged at iteration", iter)
+                break
+            
+            elapsed_time = time.time() - start_time 
+            if elapsed_time > max_elapsed_time:
+                # print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                break
+
+            if step_size_type == "const":
+                T_new = T - self.alpha_T * Grad
+            elif step_size_type == "diminish":
+                T_new = T - self.alpha_T / np.sqrt(iter + 1) * Grad
+            else:
+                raise ValueError("step_size_type can only be 'const' or 'diminish'")
+            
+            x_temp, y_temp, z_temp = self.Lagrangian_l(T, x, y, z, start_time, max_elapsed_time)
+            if x_temp is None and y_temp is None and z_temp is None:
+                print("Time limit exceeded in Lagrangian_l. Exiting bsg.")
+            else:
+                x, y, z = x_temp, y_temp, z_temp
+            
+            T = T_new
+            f_T = self.problem.gradient_f_T(T, x, y)
+            G_T = self.G_T(T, x, y, z)
+            G_v = self.G_v(T, x, y, z)
+            G_v_inv = np.linalg.inv(G_v)
+            
+            
+            f_x, f_y = self.problem.gradient_f_xy(T, x, y)
+            f_xy = np.concatenate([f_x, f_y])
+
+            Grad = f_T - G_T @ G_v_inv @ L @ f_xy
+            
+            
+        return T, x, y, history

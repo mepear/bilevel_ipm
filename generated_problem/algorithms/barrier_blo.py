@@ -17,14 +17,6 @@ class BarrierBLO:
         self.inner_max_iters = barrier_blo_params.get('inner_max_iters', 100)
         self.outer_max_iters = barrier_blo_params.get('outer_max_iters', 50)
     
-    # def tilde_g(self, x, y): # CP
-    #     t = self.t
-    #     barrier_h1 = cp.sum([cp.log(-self.problem.h_1(x, y, i)) for i in range(self.problem.num_constraints_h1)])
-    #     barrier_h2 = cp.sum([cp.log(-self.problem.h_2(x, y, i)) for i in range(self.problem.num_constraints_h2)])
-    #     # barrier_h3 = cp.log(-self.problem.h_3(x, y))
-    #     tilde_g_expr = self.problem.g(x, y) - t * (barrier_h1 + barrier_h2)
-    #     # tilde_g_expr = self.problem.g(x, y) - t * (barrier_h1 + barrier_h3)
-    #     return tilde_g_expr
 
     def tilde_g(self, x, y): # NP
         t = self.t
@@ -90,8 +82,6 @@ class BarrierBLO:
             grad_hi_y = self.problem.gradient_h_2_y(x, y, i)
             sum_grad_hy_over_hi += grad_hi_y / hi
         grad_tilde_g_y = grad_g_y - t * sum_grad_hy_over_hi
-        # h_3 = self.problem.h_3(x, y)
-        # grad_tilde_g_y = grad_g_y - t * sum_grad_hy_over_hi - t * self.problem.gradient_h_3_y(x, y) / h_3
         return grad_tilde_g_y
 
     def hessian_tilde_g_xy(self, x, y):
@@ -125,11 +115,6 @@ class BarrierBLO:
             term = (hessian_hi_yy / hi) - (np.outer(grad_hi_y, grad_hi_y) / hi**2)
             sum_constraints += term
         hessian_tilde_g_yy = hessian_g_yy - t * sum_constraints
-        # h3 = self.problem.h_3(x, y)
-        # grad_h3_y = self.problem.gradient_h_3_y(x, y)
-        # hessian_h3_yy = self.problem.hessian_h_3_yy(x, y)
-        # term2 = (hessian_h3_yy / h3) - (np.outer(grad_h3_y, grad_h3_y) / h3**2)
-        # hessian_tilde_g_yy = hessian_g_yy - t * sum_constraints - t * term2
         return hessian_tilde_g_yy
     
     def solve_constrained_g(self, x): # Use solver to solve constrained original problem
@@ -226,44 +211,6 @@ class BarrierBLO:
         y_opt = self.solve_constrained_g(x)
         return y_opt
     
-    # def compute_step_size(self, y, d, x):
-    #     t_max = np.inf
-    #     alpha = 0.99  
-
-    #     for i in range(self.problem.num_constraints_h1):
-    #         a_i = self.problem.gradient_h_1_y(x, y, i)
-    #         b_i = self.problem.h_1(x, y, i)
-    #         a_dot_d = np.dot(a_i, d)
-            
-    #         if a_dot_d > 1e-12:
-    #             t_i = -b_i / a_dot_d
-    #             if t_i < t_max:
-    #                 t_max = t_i
-        
-    #     for i in range(self.problem.num_constraints_h2):
-    #         a_i = self.problem.gradient_h_2_y(x, y, i)
-    #         b_i = self.problem.h_2(x, y, i)
-    #         a_dot_d = np.dot(a_i, d)
-            
-    #         if a_dot_d > 1e-12:
-    #             t_i = -b_i / a_dot_d
-    #             if t_i < t_max:
-    #                 t_max = t_i
-        
-    #     t_max = alpha * t_max
-        
-    #     if t_max <= 0:
-    #         raise ValueError("Fail to find the stepsize.")
-        
-    #     return t_max
-
-    # def inner_loop(self, x, y_init): # Use solver
-
-    #     y_opt = self.solve_unconstrained_tilde_g(x)
-    #     grad_y = self.gradient_tilde_g_y(x, y_opt)
-    #     grad_norm_y = np.linalg.norm(grad_y)
-    #     print(f"gradient norm of g={grad_norm_y}")
-    #     return y_opt
 
     # def inner_loop(self, x, y_init): # Interior point method for barrier reformulated problem
 
@@ -321,40 +268,19 @@ class BarrierBLO:
 
     #     return y
     
-    # def inner_loop(self, x, y_init):  # Use specific stepsize
-    #     y = y_init.copy()
-    #     for iter in range(self.inner_max_iters):
-    #         grad_y = self.gradient_tilde_g_y(x, y)
-    #         grad_norm_y = np.linalg.norm(grad_y)
-    #         stepsize = np.minimum(self.alpha_y, self.compute_step_size(y, -grad_y, x)) 
-    #         y_new = y - stepsize * grad_y
-    #         # print(f"y_new={y_new}")
-    #         # if self.check_constraints(x, y_new):
-    #         #     y_projected = y_new
-    #             # print("  Constraints satisfied. No projection needed.")
-    #         # else:
-    #         #     y_projected = self.project_to_constraints(x, y_new)
-    #             # print("  Constraints violated. Projection performed.")
-    #         # print(f"y_projected={y_projected}")
-    #         print(f"  Gradient norm = {grad_norm_y}")
-
-    #         if grad_norm_y < self.epsilon_y:
-    #             print(f"Inner loop converged at iteration {iter}")
-    #             y = y_new
-    #             break
-
-    #         y = y_new
-
-    #     return y
     
-    def inner_loop(self, x, y_init):  # Newton method
+    def inner_loop(self, x, y_init, start_time, max_elapsed_time):  # Newton method
         y = y_init.copy()
         for iter in range(self.inner_max_iters):
             grad_y = self.gradient_tilde_g_y(x, y)
             grad_norm_y = np.linalg.norm(grad_y)
             if grad_norm_y < self.epsilon_y:
-                print(f"Inner loop converged at iteration {iter}")
+                # print(f"Inner loop converged at iteration {iter}")
                 break
+            elapsed_time = time.time() - start_time
+            if elapsed_time > max_elapsed_time:
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting inner loop.")
+                return None
             Hessian_yy = self.hessian_tilde_g_yy(x, y)
             try:
                 v = np.linalg.solve(Hessian_yy, grad_y)
@@ -566,31 +492,45 @@ class BarrierBLO:
 
 
     def upper_loop(self, x_init, y_init, max_elapsed_time, step_size_type="const"):
+        start_time = time.time()
         x = x_init.copy()
         y = y_init.copy()
+        y_temp = self.inner_loop(x, y, start_time, max_elapsed_time)
+        if y_temp is None:
+            print("Time limit exceeded in Inner Loop Exiting bfbm.")
+        else:
+            y = y_temp
+        grad_f_x = self.problem.gradient_f_x(x, y)
+        grad_f_y = self.problem.gradient_f_y(x, y)
+        hessian_xy = self.hessian_tilde_g_xy(x, y)
+        hessian_yy = self.hessian_tilde_g_yy(x, y)
+        v = np.linalg.solve(hessian_yy, grad_f_y)
+        grad_F_x = grad_f_x - hessian_xy @ v
+        grad_norm_x = np.linalg.norm(grad_F_x)
         history = []
-        start_time = time.time()
+        
 
         for outer_iter in range(self.outer_max_iters):
-            print(f"Outer iteration {outer_iter + 1}")
-            y = self.inner_loop(x, y)
-            grad_f_x = self.problem.gradient_f_x(x, y)
-            grad_f_y = self.problem.gradient_f_y(x, y)
-            hessian_xy = self.hessian_tilde_g_xy(x, y)
-            hessian_yy = self.hessian_tilde_g_yy(x, y)
-            try:
-                v = np.linalg.solve(hessian_yy, grad_f_y)
-            except np.linalg.LinAlgError:
-                print("Hessian matrix is singular at outer iteration", outer_iter)
+            f_value = self.problem.f(x, y)
+
+            elapsed_time = time.time() - start_time
+            history.append({
+                'iteration': outer_iter,
+                'x': x.copy(),
+                'y': y.copy(),
+                'f_value': f_value,
+                'grad_norm': grad_norm_x,
+                'time': elapsed_time
+            })
+            print(f"f(x, y) = {f_value}, grad_norm of hyperfunction= {np.linalg.norm(grad_F_x)}")
+
+            if grad_norm_x < self.epsilon_x:
+                # print("Outer loop converged at iteration", outer_iter)
                 break
-            grad_F_x = grad_f_x - hessian_xy @ v
-            grad_norm_x = np.linalg.norm(grad_F_x)
-            if np.linalg.norm(grad_norm_x) < self.epsilon_x:
-                print("Outer loop converged at iteration", outer_iter)
-                break
+            
             elapsed_time = time.time() - start_time
             if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                # print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
                 break
             
             if step_size_type == "const":
@@ -601,18 +541,29 @@ class BarrierBLO:
                 raise ValueError("step_size_type can only be 'const' or 'diminish'")
             
             x_new = x - step_size * grad_F_x
-            elapsed_time = time.time() - start_time    
+
+            y_temp = self.inner_loop(x, y, start_time, max_elapsed_time)
+            if y_temp is None:
+                print("Time limit exceeded in Inner Loop Exiting bfbm.")
+                break
+            else:
+                y = y_temp
             
             x = x_new
-            f_value = self.problem.f(x, y)
-            history.append({
-                'iteration': outer_iter,
-                'x': x.copy(),
-                'y': y.copy(),
-                'f_value': f_value,
-                'grad_norm': grad_norm_x,
-                'time': elapsed_time
-            })
-            print(f"f(x, y) = {f_value}, grad_norm of hyperfunction= {np.linalg.norm(grad_F_x)}")
+
+            # print(f"Outer iteration {outer_iter + 1}")
+            grad_f_x = self.problem.gradient_f_x(x, y)
+            grad_f_y = self.problem.gradient_f_y(x, y)
+            hessian_xy = self.hessian_tilde_g_xy(x, y)
+            hessian_yy = self.hessian_tilde_g_yy(x, y)
+            v = np.linalg.solve(hessian_yy, grad_f_y)
+            grad_F_x = grad_f_x - hessian_xy @ v
+            grad_norm_x = np.linalg.norm(grad_F_x)
+            
+            
+            
+            
+            
+            
             
         return x, y, history

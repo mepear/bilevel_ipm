@@ -84,31 +84,46 @@ class BLOCC:
         x = x_init.copy()
         y = y_init.copy()
         for outer_iter in range (self.maxmin_g_outer_max_iters):
+            if outer_iter == 0:
+                mu_mid = mu
+            else:
+                mu_mid = mu + (outer_iter - 1) / (outer_iter + 2) * (mu - mu_old)
+
             for inner_iter in range (self.maxmin_g_inner_max_iters):
                 grad_x, grad_y = self.problem.gradient_g_xy(T, x, y)
                 gradient_g_xy = np.concatenate([grad_x, grad_y])
-                gradient_L_g_xy = gradient_g_xy + self.compute_inner_product_xy(T, x, y, mu)
+                gradient_L_g_xy = gradient_g_xy + self.compute_inner_product_xy(T, x, y, mu_mid)
                 if np.linalg.norm(gradient_L_g_xy) <= self.epsilon_inner_xy_g:
-                    print(f"Inner loop for L_g converges when iter = {inner_iter}")
+                    # print(f"Inner loop for L_g converges when iter = {inner_iter}")
                     break
                 # print(f"Inner iter for L_g={inner_iter}, Projected Gradient norm w.r.t y of L_g={np.linalg.norm(gradient_L_g_xy)}")
-                x, y = x - self.alpha_g_xy * gradient_L_g_xy[:len(x)], y - self.alpha_g_xy * gradient_L_g_xy[len(x):]
                 elapsed_time = time.time() - start_time
                 if elapsed_time > max_elapsed_time:
-                    print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                    # print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting inner loop.")
+                    return None, None, None
+                stepsize = self.alpha_g_xy# / np.sqrt(inner_iter + 1)
+                x, y = x - stepsize * gradient_L_g_xy[:len(x)], y - stepsize * gradient_L_g_xy[len(x):]
+                elapsed_time = time.time() - start_time
+                if elapsed_time > max_elapsed_time:
+                    # print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
                     break
-            mu_new = mu + self.beta_g_xy * self.constraint_vector(T, x, y)
+            stepsize = self.beta_g_xy #/ np.sqrt(outer_iter + 1)
+            # print(f"current mu is:{mu}")
+            # print(f"constraints value are:{self.constraint_vector(T, x, y)}")
+            mu_new = mu_mid + stepsize * self.constraint_vector(T, x, y)
+            # print(f"current mu_new is:{mu_new}")
             mu_new = np.maximum(mu_new, 0)
+            mu_old = mu
+            # print(f"current mu_new after projection is:{mu_new}")
             
-            
-            if (np.linalg.norm(mu_new - mu) / self.beta_g_xy) <= self.epsilon_outer_xy_g:
+            print(f"Outer iter for L_g={outer_iter}, Projected Gradient norm w.r.t mu of L_g={(np.linalg.norm(mu_new - mu_old) / stepsize)}")
+            if (np.linalg.norm(mu_new - mu_old) / stepsize) <= self.epsilon_outer_xy_g:
                 print(f"Outer loop for L_g converges when iter = {outer_iter}")
                 break
             elapsed_time = time.time() - start_time
             if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                break
-            print(f"Outer iter for L_g={outer_iter}, Projected Gradient norm w.r.t mu of L_g={(np.linalg.norm(mu_new - mu) / self.beta_g_xy)}")
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting inner loop.")
+                return None, None, None
             mu = mu_new
         return x, y, mu
 
@@ -117,76 +132,81 @@ class BLOCC:
         x = y_init.copy()
         y = y_init.copy()
         for outer_iter in range (self.maxmin_F_outer_max_iters):
+            if outer_iter == 0:
+                mu_mid = mu
+            else:
+                mu_mid = mu + (outer_iter - 1) / (outer_iter + 2) * (mu - mu_old)
             for inner_iter in range (self.maxmin_g_inner_max_iters):
                 grad_f_x, grad_f_y = self.problem.gradient_f_xy(T, x, y)
                 gradient_f_xy = np.concatenate([grad_f_x, grad_f_y])
                 grad_g_x, grad_g_y = self.problem.gradient_g_xy(T, x, y)
                 gradient_g_xy = np.concatenate([grad_g_x, grad_g_y])
                 # print(f"gradient_f_xy={gradient_f_xy}, gradient_g_xy={gradient_g_xy}")
-                gradient_L_F_xy = gradient_f_xy + self.gamma * gradient_g_xy + self.compute_inner_product_xy(T, x, y, mu)
+                gradient_L_F_xy = gradient_f_xy + self.gamma * gradient_g_xy + self.compute_inner_product_xy(T, x, y, mu_mid)
                 if np.linalg.norm(gradient_L_F_xy) <= self.epsilon_inner_xy_F:
-                    print(f"Inner loop for L_F converges when iter = {inner_iter}")
+                    # print(f"Inner loop for L_F converges when iter = {inner_iter}")
                     break
                 # print(f"Inner iter for L_F={inner_iter}, Projected Gradient norm w.r.t y of L_F={np.linalg.norm(gradient_L_F_xy)}")
-                x, y = x - self.alpha_F_xy * gradient_L_F_xy[:len(x)], y - self.alpha_F_xy * gradient_L_F_xy[len(x):]
                 elapsed_time = time.time() - start_time
                 if elapsed_time > max_elapsed_time:
-                    print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                    break
-            mu_new = mu + self.beta_F_xy * self.constraint_vector(T, x, y)
+                    print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting inner loop.")
+                    return None, None, None 
+                stepsize = self.alpha_F_xy# / np.sqrt(inner_iter + 1)
+                x, y = x - stepsize * gradient_L_F_xy[:len(x)], y - stepsize * gradient_L_F_xy[len(x):]
+            stepsize = self.beta_F_xy# / np.sqrt(outer_iter + 1)
+            mu_new = mu_mid + stepsize * self.constraint_vector(T, x, y)
             mu_new = np.maximum(mu_new, 0)
-
-            if (np.linalg.norm(mu_new - mu) / self.beta_F_xy) <= self.epsilon_outer_xy_F:
+            mu_old = mu
+            print(f"Outer iter for L_F={outer_iter}, Projected Gradient norm w.r.t mu of L_F={(np.linalg.norm(mu_new - mu_old) / stepsize)}")
+            if (np.linalg.norm(mu_new - mu_old) / stepsize) <= self.epsilon_outer_xy_F:
                 print(f"Outer loop for L_F converges when iter = {outer_iter}")
                 break
-            print(f"Outer iter for L_F={outer_iter}, Projected Gradient norm w.r.t mu of L_F={(np.linalg.norm(mu_new - mu) / self.beta_F_xy)}")
             elapsed_time = time.time() - start_time
             if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                break
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting inner loop.")
+                return None, None, None
             mu = mu_new
         return x, y, mu
 
-    def blocc(self, T_init, x_g_init, y_g_init, y_F_init, x_F_init, mu_g_init, mu_F_init, max_elapsed_time):
+    def blocc(self, T_init, x_g_init, y_g_init, y_F_init, x_F_init, mu_g_init, mu_F_init, max_elapsed_time, step_size_type="const"):
+        start_time = time.time()
         T = T_init.copy()
         x_g = x_g_init.copy()
         x_F = x_F_init.copy()
         y_g = y_g_init.copy()
         y_F = y_F_init.copy()
         mu_g = mu_g_init.copy()
-        mu_F_init = mu_F_init.copy()
+        mu_F = mu_F_init.copy()
+        x_g_temp, y_g_temp, mu_g_temp = self.maxminoptimizer_g(T, x_F, y_F, mu_g, start_time, max_elapsed_time)
+        if x_g_temp is None and y_g_temp is None and mu_g_temp is None:
+            print("Time limit exceeded in Lagrangian_g. Exiting blocc.")
+        else:
+            x_g, y_g, mu_g = x_g_temp, y_g_temp, mu_g_temp
+        x_F_temp, y_F_temp, mu_F_temp = self.maxminoptimizer_F(T, x_g, y_g, mu_g, start_time, max_elapsed_time)
+        if  x_F_temp is None and y_F_temp is None and mu_F_temp is None:
+            print("Time limit exceeded in Lagrangian_g. Exiting blocc.")
+        else:
+            x_F, y_F, mu_F = x_F_temp, y_F_temp, mu_F_temp
+        grad_f_T = self.problem.gradient_f_T(T, x_F, y_F)
+        grad_g_T_xyF = self.problem.gradient_g_T(T, x_F, y_F)
+        grad_g_T_xyg = self.problem.gradient_g_T(T, x_g, y_g)
+
+        inner_product_mu_g_gradient_g_T = self.compute_inner_product_T(T, x_g, y_g, mu_g)
+        inner_product_mu_F_gradient_g_T = self.compute_inner_product_T(T, x_F, y_F, mu_F)
+
+        grad_F_T = grad_f_T + self.gamma * (grad_g_T_xyF - grad_g_T_xyg - inner_product_mu_g_gradient_g_T) + inner_product_mu_F_gradient_g_T
+        grad_norm_F_T = np.linalg.norm(grad_F_T)
+        
+        x, y = x_F, y_F
+        
         history = []
-        start_time = time.time()
+        
 
         for iter in range (self.main_max_iters):
             print(f"Main iteration {iter + 1}")
-            x_g, y_g, mu_g = self.maxminoptimizer_g(T, x_F, y_F, mu_g, start_time, max_elapsed_time)
-            x_F, y_F, mu_F = self.maxminoptimizer_F(T, x_g, y_g, mu_g, start_time, max_elapsed_time)
-
-            grad_f_T = self.problem.gradient_f_T(T, x, y_F)
-            grad_g_T_xyF = self.problem.gradient_g_T(T, x_F, y_F)
-            grad_g_T_xyg = self.problem.gradient_g_T(T, x_g, y_g)
-
-            inner_product_mu_g_gradient_g_T = self.compute_inner_product_T(T, x_g, y_g, mu_g)
-            inner_product_mu_F_gradient_g_T = self.compute_inner_product_T(T, x_F, y_F, mu_F)
-
-            grad_F_T = grad_f_T + self.gamma * (grad_g_T_xyF - grad_g_T_xyg - inner_product_mu_g_gradient_g_T) + inner_product_mu_F_gradient_g_T
-            grad_norm_F_T = np.linalg.norm(grad_F_T)
-            if grad_norm_F_T <= self.epsilon_T:
-                x = x_F
-                y = y_F
-                print("Main loop converged at iteration", iter)
-                break
-            elapsed_time = time.time() - start_time
-            if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                break
-            stepsize = self.alpha_T/ np.sqrt(iter + 1)
-            T = T - stepsize * grad_F_T
-            
-            x = x_F
-            y = y_F
+            x, y = x_F, y_F
             f_value = self.problem.f(T, x, y)
+            elapsed_time = time.time() - start_time
             history.append({
                 'iteration': iter,
                 'x': x.copy(),
@@ -196,4 +216,47 @@ class BLOCC:
                 'time': elapsed_time
             })
             print(f"f(x,y)={f_value},grad_norm = {grad_norm_F_T}")
+
+            if grad_norm_F_T <= self.epsilon_T:
+                # print("Main loop converged at iteration", iter)
+                break
+
+            elapsed_time = time.time() - start_time
+            if elapsed_time > max_elapsed_time:
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                break
+
+            if step_size_type == "const":
+                T_new = T - self.alpha_T * grad_F_T
+            elif step_size_type == "diminish":
+                T_new = T - self.alpha_T / np.sqrt(iter + 1) * grad_F_T
+            else:
+                raise ValueError("step_size_type can only be 'const' or 'diminish'")
+            
+            x_g_temp, y_g_temp, mu_g_temp = self.maxminoptimizer_g(T, x_F, y_F, mu_g, start_time, max_elapsed_time)
+            if x_g_temp is None and y_g_temp is None and mu_g_temp is None:
+                print("Time limit exceeded in Lagrangian_g. Exiting blocc.")
+                break
+            else:
+                x_g, y_g, mu_g = x_g_temp, y_g_temp, mu_g_temp
+            x_F_temp, y_F_temp, mu_F_temp = self.maxminoptimizer_F(T, x_g, y_g, mu_g, start_time, max_elapsed_time)
+            if  x_F_temp is None and y_F_temp is None and mu_F_temp is None:
+                print("Time limit exceeded in Lagrangian_g. Exiting blocc.")
+                break
+            else:
+                x_F, y_F, mu_F = x_F_temp, y_F_temp, mu_F_temp
+            
+            T = T_new
+            
+            grad_f_T = self.problem.gradient_f_T(T, x_F, y_F)
+            grad_g_T_xyF = self.problem.gradient_g_T(T, x_F, y_F)
+            grad_g_T_xyg = self.problem.gradient_g_T(T, x_g, y_g)
+
+            inner_product_mu_g_gradient_g_T = self.compute_inner_product_T(T, x_g, y_g, mu_g)
+            inner_product_mu_F_gradient_g_T = self.compute_inner_product_T(T, x_F, y_F, mu_F)
+
+            grad_F_T = grad_f_T + self.gamma * (grad_g_T_xyF - grad_g_T_xyg - inner_product_mu_g_gradient_g_T) + inner_product_mu_F_gradient_g_T
+            grad_norm_F_T = np.linalg.norm(grad_F_T)
+            
+            
         return T, x, y, history

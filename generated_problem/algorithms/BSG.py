@@ -151,38 +151,38 @@ class BSG:
         z = z_init.copy()
         y = y_init.copy()
         for outer_iter in range (self.max_iters_z):
-            if outer_iter == 0:
-                z_mid = z
-            else:
-                z_mid = z + (outer_iter - 1) / (outer_iter + 2) * (z - z_old)
+            # if outer_iter == 0:
+            #     z_mid = z
+            # else:
+            #     z_mid = z + (outer_iter - 1) / (outer_iter + 2) * (z - z_old)
 
             for inner_iter in range (self.max_iters_y):
-                gradient_L_g_y = self.problem.gradient_g_y(x,y) + self.compute_inner_product_y(x, y, z_mid)
+                gradient_L_g_y = self.problem.gradient_g_y(x,y) + self.compute_inner_product_y(x, y, z)
                 if np.linalg.norm(gradient_L_g_y) <= self.epsilon_y:
                     # print(f"Inner loop for y converges when iter = {inner_iter}")
                     break
                 elapsed_time = time.time() - start_time
-                # if elapsed_time > max_elapsed_time:
-                #     print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                #     break
+                if elapsed_time > max_elapsed_time:
+                    # print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting inner loop.")
+                    return None, None
                 # print(f"Inner iter for y={inner_iter}, Projected Gradient norm w.r.t y={np.linalg.norm(gradient_L_g_y)}")
                 y = y - self.alpha_y * gradient_L_g_y
            
            
-            z_new = z_mid + self.alpha_z * self.constraint_vector(x, y)
+            z_new = z + self.alpha_z * self.constraint_vector(x, y)
             z_new = np.maximum(z_new, 0)
             z_old = z
             
             
             if (np.linalg.norm(z_new - z_old) / self.alpha_z) <= self.epsilon_z:
-                # print(f"Outer loop for z converges when iter = {outer_iter}")
+                print(f"Outer loop for z converges when iter = {outer_iter}")
                 break
             # print(f"Outer iter for z={outer_iter}, Projected Gradient norm w.r.t z={(np.linalg.norm(z_new - z_old) / self.alpha_z)}")
             z = z_new
             elapsed_time = time.time() - start_time
-            # if elapsed_time > max_elapsed_time:
-            #     print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-            #     break
+            if elapsed_time > max_elapsed_time:
+                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting inner loop.")
+                return None, None
         return y, z
     
     def check_multiplier(self, x, y, z):
@@ -194,45 +194,32 @@ class BSG:
         for i in range(self.problem.num_constraints_h2):
             hi_val = self.problem.h_2(x, y, i)
             if abs(hi_val) <= 1e-10:
-                print(f"h2 {i}-th constraint is active, multiplier: {z[i + self.problem.num_constraints_h2]}")
+                print(f"h2 {i}-th constraint is active, multiplier: {z[i + self.problem.num_constraints_h1]}")
 
     def bsg(self, x_init, y_init, z_init, max_elapsed_time, step_size_type="const"):
+        start_time = time.time()
         x = x_init.copy()
         y = y_init.copy()
         z = z_init.copy()
-        history = []
-        start_time = time.time()
+        y_temp, z_temp = self.Lagrangian_l(x, y, z, start_time, max_elapsed_time)
+        if y_temp is None and z_temp is None:
+            print("Time limit exceeded in Lagrangian_l. Exiting bsg.")
+        else:
+            y, z = y_temp, z_temp
+        f_x = self.problem.gradient_f_x(x, y)
+        G_x = self.G_x(x, y, z)
+        G_v = self.G_v(x, y, z)
+        G_v_inv = np.linalg.inv(G_v)
+        f_y = self.problem.gradient_f_y(x, y)
         L = np.hstack((np.eye(self.problem.n), np.zeros((self.problem.n, self.problem.num_constraints_h1 + self.problem.num_constraints_h2)))).T
+        Grad = f_x - G_x @ G_v_inv @ L @ f_y
+        history = []
 
         for iter in range (self.max_iters_x):
-            y, z = self.Lagrangian_l(x, y, z, start_time, max_elapsed_time)
-
-            f_x = self.problem.gradient_f_x(x, y)
-            G_x = self.G_x(x, y, z)
-            G_v = self.G_v(x, y, z)
-            # print(f"Condition number of G_v: {np.linalg.cond(G_v)}")
-            # self.check_multiplier(x, y, z)
-            G_v_inv = np.linalg.inv(G_v)
-            f_y = self.problem.gradient_f_y(x, y)
-
-            Grad = f_x - G_x @ G_v_inv @ L @ f_y
-
-            if np.linalg.norm(Grad) < self.epsilon_x:
-                print("Main loop converged at iteration", iter)
-                break
-            elapsed_time = time.time() - start_time 
-            if elapsed_time > max_elapsed_time:
-                print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
-                break
-            
-            if step_size_type == "const":
-                x = x - self.alpha_x * Grad
-            elif step_size_type == "diminish":
-                x = x - self.alpha_x / np.sqrt(iter + 1) * Grad
-            else:
-                raise ValueError("step_size_type can only be 'const' or 'diminish'")
- 
+            print(f"Main iteration {iter + 1}")
             f_value = self.problem.f(x, y)
+            
+            elapsed_time = time.time() - start_time
             history.append({
                 'iteration': iter,
                 'x': x.copy(),
@@ -242,5 +229,45 @@ class BSG:
                 'time': elapsed_time
             })
             print(f"f(x, y) = {f_value}, grad_norm of hyperfunction= {np.linalg.norm(Grad)}")
+
+            if np.linalg.norm(Grad) < self.epsilon_x:
+                # print("Main loop converged at iteration", iter)
+                break
             
+            elapsed_time = time.time() - start_time 
+            if elapsed_time > max_elapsed_time:
+                # print(f"Time limit exceeded: {elapsed_time:.2f} seconds. Exiting loop.")
+                break
+            
+            if step_size_type == "const":
+                x_new = x - self.alpha_x * Grad
+            elif step_size_type == "diminish":
+                x_new = x - self.alpha_x / np.sqrt(iter + 1) * Grad
+            else:
+                raise ValueError("step_size_type can only be 'const' or 'diminish'")
+            
+            y_temp, z_temp = self.Lagrangian_l(x, y, z, start_time, max_elapsed_time)
+            if y_temp is None and z_temp is None:
+                print("Time limit exceeded in Lagrangian_l. Exiting bsg.")
+                break
+            else:
+                y, z = y_temp, z_temp
+            
+            x = x_new
+            f_x = self.problem.gradient_f_x(x, y)
+            G_x = self.G_x(x, y, z)
+            G_v = self.G_v(x, y, z)
+            # print(f"Condition number of G_v: {np.linalg.cond(G_v)}")
+            # self.check_multiplier(x, y, z)
+            G_v_inv = np.linalg.inv(G_v)
+
+            f_y = self.problem.gradient_f_y(x, y)
+            Grad = f_x - G_x @ G_v_inv @ L @ f_y
+            
+            
+            
+
+            
+            
+
         return x, y, history

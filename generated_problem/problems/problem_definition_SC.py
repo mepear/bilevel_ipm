@@ -12,7 +12,6 @@ class BilevelProblem:
         self.g_scalars_1 = data['g_scalars_1']
         self.E_matrices_2 = data['E_matrices_2']
         self.g_scalars_2 = data['g_scalars_2']
-        self.g_scalars_3 = data['g_scalars_3']
         self.n = data['n']
         self.num_constraints_h1 = data['num_constraints_1']
         self.num_constraints_h2 = 2 * self.n
@@ -42,12 +41,6 @@ class BilevelProblem:
             constraint_type = i // self.n
             index = i % self.n
             return self.E_matrices_2[constraint_type][index, index] * y[index] - self.g_scalars_2[constraint_type][index]
-
-    def h_3(self, x, y):
-        if isinstance(y, cp.Variable):
-            return cp.sum(0.5 * cp.sum_squares(y) - self.g_scalars_3 / self.n)
-        else:
-            return 0.5 * np.linalg.norm(y) ** 2 - self.g_scalars_3
 
     def gradient_f_x(self, x, y):
         z = np.concatenate([x, y])

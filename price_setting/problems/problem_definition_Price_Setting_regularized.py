@@ -13,7 +13,7 @@ class BilevelProblem_regularized:
         self.n = data['n']
         self.num_constraints_h1 = data['num_constraints_1']
         self.num_constraints_h2 = 4 * self.n
-        self.kappa = 0.001
+        self.kappa = 0.01
 
     def f(self, T, x, y):
         return -T.T @ x
@@ -104,7 +104,7 @@ class BilevelProblem_regularized:
     def hessian_h_1_xy_xy(self, T, x, y, i):
         return np.zeros((2 * self.n, 2 * self.n))
 
-    def hessian_h_2_yy(self, T, x, y, i):
+    def hessian_h_2_xy_xy(self, T, x, y, i):
         return np.zeros((2 * self.n, 2 * self.n))
 
 
